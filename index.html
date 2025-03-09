@@ -545,6 +545,32 @@
             // Get the canvas element
             const canvas = document.getElementById('gameCanvas');
             
+            // Setup pointer lock
+            canvas.addEventListener('click', function() {
+                if (!gameStarted) return;
+                
+                // Request pointer lock
+                canvas.requestPointerLock = canvas.requestPointerLock || 
+                                           canvas.mozRequestPointerLock ||
+                                           canvas.webkitRequestPointerLock;
+                canvas.requestPointerLock();
+            });
+            
+            // Pointer lock change event
+            document.addEventListener('pointerlockchange', lockChangeAlert, false);
+            document.addEventListener('mozpointerlockchange', lockChangeAlert, false);
+            document.addEventListener('webkitpointerlockchange', lockChangeAlert, false);
+            
+            function lockChangeAlert() {
+                if (document.pointerLockElement === canvas ||
+                    document.mozPointerLockElement === canvas ||
+                    document.webkitPointerLockElement === canvas) {
+                    console.log('Pointer lock active');
+                } else {
+                    console.log('Pointer lock inactive');
+                }
+            }
+            
             // Function to handle keydown events
             function handleKeyDown(event) {
                 if (!gameStarted) {
@@ -711,17 +737,16 @@
             canvas.addEventListener('mousemove', function(event) {
                 if (!gameStarted) return;
                 
-                // Get mouse position relative to center of screen
-                const centerX = window.innerWidth / 2;
-                const centerY = window.innerHeight / 2;
+                // Calculate mouse movement delta
+                const movementX = event.movementX || event.mozMovementX || event.webkitMovementX || 0;
+                const movementY = event.movementY || event.mozMovementY || event.webkitMovementY || 0;
                 
-                // Calculate how far from center the mouse is
-                const mouseX = event.clientX;
-                const mouseY = event.clientY;
+                // Update rotation based on mouse movement
+                targetYaw -= movementX * mouseSensitivity;
+                targetPitch -= movementY * mouseSensitivity;
                 
-                // Calculate target rotation based on distance from center
-                targetYaw = -((mouseX - centerX) / centerX) * Math.PI * 0.5;
-                targetPitch = -((mouseY - centerY) / centerY) * Math.PI * 0.25;
+                // Limit pitch to avoid flipping
+                targetPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, targetPitch));
             });
             
             // Mouse click for shooting
@@ -1741,6 +1766,15 @@
             currentYaw = 0;
             currentPitch = 0;
             
+            // Request pointer lock on game start
+            const canvas = document.getElementById('gameCanvas');
+            canvas.requestPointerLock = canvas.requestPointerLock || 
+                                       canvas.mozRequestPointerLock ||
+                                       canvas.webkitRequestPointerLock;
+            setTimeout(() => {
+                canvas.requestPointerLock();
+            }, 100);
+            
             // Start the animation loop if not already running
             if (!frameId) {
                 prevTime = performance.now();
@@ -1754,10 +1788,10 @@
             displayFallbackMessage();
             
             // Add keyboard focus to the canvas
-            const canvas = document.getElementById('gameCanvas');
-            canvas.focus();
-            canvas.setAttribute('tabindex', '0');
-            console.log("Canvas focused:", document.activeElement === canvas);
+            const canvasFocus = document.getElementById('gameCanvas');
+            canvasFocus.focus();
+            canvasFocus.setAttribute('tabindex', '0');
+            console.log("Canvas focused:", document.activeElement === canvasFocus);
             
             // Force movement variables to false to ensure clean state
             moveForward = false;
