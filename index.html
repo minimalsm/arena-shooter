@@ -158,7 +158,7 @@
     </style>
 </head>
 <body>
-    <div id="version-display">v1.0.5</div>
+    <div id="version-display">v1.0.8</div>
     <div id="crosshair">+</div>
     <div id="hud">
         <div id="weapon-info">Current Weapon: Basic Blaster</div>
@@ -167,7 +167,7 @@
     <div id="health-bar"><div id="health-fill"></div></div>
     <div id="ammo">Ammo: 100</div>
     <div id="score">Score: 0</div>
-    <div id="instructions">WASD to move | Move mouse to aim | Click to shoot | 1-3 to switch weapons | 0 to toggle debug</div>
+    <div id="instructions">WASD to move | SPACE to jump | Move mouse to aim | Click to shoot | 1-3 to switch weapons | 0 to toggle debug</div>
     
     <div id="start-menu">
         <h1>Arena Shooter</h1>
@@ -187,12 +187,13 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.149.0/three.min.js"></script>
     <script>
         // Game version - increment this when making changes
-        const GAME_VERSION = "1.0.4";
+        const GAME_VERSION = "1.0.8";
         
         // Game variables
         let scene, camera, renderer;
         let player, playerDirection;
         let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        let jumping = false, canJump = true;  // Add jumping variables
         let prevTime = performance.now();
         let velocity = new THREE.Vector3();
         let direction = new THREE.Vector3();
@@ -210,6 +211,8 @@
         // Movement speed
         const MOVE_SPEED = 0.15;
         const TURN_SPEED = 0.05;
+        const JUMP_FORCE = 0.25;  // Jump force
+        const GRAVITY = 0.01;     // Gravity force
         
         // Player direction (in radians)
         let playerRotation = 0;
@@ -554,6 +557,9 @@
                                            canvas.mozRequestPointerLock ||
                                            canvas.webkitRequestPointerLock;
                 canvas.requestPointerLock();
+                
+                // Shoot when clicking
+                shoot();
             });
             
             // Pointer lock change event
@@ -624,7 +630,12 @@
                         if (weapons.rocketLauncher.ammo > 0) switchWeapon('rocketLauncher');
                         break;
                     case 32: // Space
-                        shoot();
+                        console.log("Space pressed");
+                        if (canJump) {
+                            jumping = true;
+                            canJump = false;
+                            velocity.y = JUMP_FORCE;
+                        }
                         break;
                     case 192: // Backtick/tilde key
                     case 96: // Numpad 0 (alternative for backtick)
@@ -640,41 +651,35 @@
             
             // Function to handle keyup events
             function handleKeyUp(event) {
-                console.log("Key up:", event.keyCode, "Key:", event.key);
+                if (!gameStarted) return;
                 
-                // Handle by keyCode first (for compatibility)
                 switch (event.keyCode) {
                     case 87: // W
-                        console.log("W key released");
                         moveForward = false;
                         break;
                     case 38: // Up arrow
-                        console.log("Up arrow released");
                         moveForward = false;
                         break;
                     case 83: // S
-                        console.log("S key released");
                         moveBackward = false;
                         break;
                     case 40: // Down arrow
-                        console.log("Down arrow released");
                         moveBackward = false;
                         break;
                     case 65: // A
-                        console.log("A key released");
                         moveLeft = false;
                         break;
                     case 37: // Left arrow
-                        console.log("Left arrow released");
                         moveLeft = false;
                         break;
                     case 68: // D
-                        console.log("D key released");
                         moveRight = false;
                         break;
                     case 39: // Right arrow
-                        console.log("Right arrow released");
                         moveRight = false;
+                        break;
+                    case 32: // Space
+                        // We don't reset jumping here as it's handled in the physics update
                         break;
                     default:
                         // Fallback to key property for browsers that don't support keyCode
@@ -1483,51 +1488,42 @@
             });
         }
         
-        function updatePlayerMovement() {
-            // Simple direct movement approach
-            let moveX = 0;
-            let moveZ = 0;
+        function updatePlayerMovement(delta) {
+            if (!gameStarted) return;
             
-            // Calculate movement direction
-            if (moveForward) moveZ -= MOVE_SPEED;
-            if (moveBackward) moveZ += MOVE_SPEED;
-            if (moveLeft) moveX -= MOVE_SPEED;
-            if (moveRight) moveX += MOVE_SPEED;
+            // Apply gravity
+            velocity.y -= GRAVITY;
             
-            // Only log when there's actual movement or state changes
-            if (!updatePlayerMovement.lastMoveState) {
-                updatePlayerMovement.lastMoveState = {
-                    forward: false,
-                    backward: false,
-                    left: false,
-                    right: false
-                };
+            // Update player position based on velocity
+            yawObject.position.y += velocity.y;
+            
+            // Check if player is on the ground
+            if (yawObject.position.y < 1.6) { // Player height
+                velocity.y = 0;
+                yawObject.position.y = 1.6;
+                canJump = true;
+                jumping = false;
             }
             
-            if (moveForward !== updatePlayerMovement.lastMoveState.forward || 
-                moveBackward !== updatePlayerMovement.lastMoveState.backward || 
-                moveLeft !== updatePlayerMovement.lastMoveState.left || 
-                moveRight !== updatePlayerMovement.lastMoveState.right) {
-                
-                console.log("Movement state changed:", { 
-                    forward: moveForward, 
-                    backward: moveBackward, 
-                    left: moveLeft, 
-                    right: moveRight,
-                    moveX: moveX,
-                    moveZ: moveZ
-                });
-                
-                // Update last state
-                updatePlayerMovement.lastMoveState.forward = moveForward;
-                updatePlayerMovement.lastMoveState.backward = moveBackward;
-                updatePlayerMovement.lastMoveState.left = moveLeft;
-                updatePlayerMovement.lastMoveState.right = moveRight;
+            // Reset velocity
+            velocity.x = 0;
+            velocity.z = 0;
+            
+            // Set movement velocity based on key states
+            if (moveForward) velocity.z -= MOVE_SPEED;
+            if (moveBackward) velocity.z += MOVE_SPEED;
+            if (moveLeft) velocity.x -= MOVE_SPEED;
+            if (moveRight) velocity.x += MOVE_SPEED;
+            
+            // Normalize diagonal movement
+            if (velocity.x !== 0 && velocity.z !== 0) {
+                velocity.x *= 0.7071; // 1 / sqrt(2)
+                velocity.z *= 0.7071;
             }
             
-            if (moveX === 0 && moveZ === 0) {
-                return; // No movement needed
-            }
+            // Rotate velocity based on camera rotation
+            const rotatedVelocity = new THREE.Vector3(velocity.x, 0, velocity.z);
+            rotatedVelocity.applyAxisAngle(new THREE.Vector3(0, 1, 0), -yawObject.rotation.y);
             
             // Store current position for collision detection
             const oldPosition = {
@@ -1536,45 +1532,21 @@
                 z: yawObject.position.z
             };
             
-            // Get the camera's facing direction (yaw)
-            const angle = yawObject.rotation.y;
-            
-            // Try moving on both axes
-            let newPosition = {
-                x: oldPosition.x,
-                y: oldPosition.y,
-                z: oldPosition.z
-            };
-            
-            // Calculate movement based on camera direction
-            if (moveZ !== 0) {
-                // Forward/backward movement
-                newPosition.x += Math.sin(angle) * moveZ;
-                newPosition.z += Math.cos(angle) * moveZ;
-            }
-            
-            if (moveX !== 0) {
-                // Strafe movement (left/right)
-                newPosition.x += Math.sin(angle + Math.PI/2) * moveX;
-                newPosition.z += Math.cos(angle + Math.PI/2) * moveX;
-            }
-            
-            // Apply the new position
-            yawObject.position.set(newPosition.x, newPosition.y, newPosition.z);
+            // Apply velocity to position
+            yawObject.position.x += rotatedVelocity.x;
+            yawObject.position.z += rotatedVelocity.z;
             
             // Check for collisions with obstacles
             if (checkObstacleCollisions()) {
-                // If collision detected, try to slide along walls
-                
                 // First, try just X movement
-                yawObject.position.set(newPosition.x, oldPosition.y, oldPosition.z);
+                yawObject.position.set(yawObject.position.x, oldPosition.y, oldPosition.z);
                 if (checkObstacleCollisions()) {
                     // X movement caused collision, revert X
                     yawObject.position.x = oldPosition.x;
                 }
                 
                 // Then, try just Z movement
-                yawObject.position.set(yawObject.position.x, oldPosition.y, newPosition.z);
+                yawObject.position.set(yawObject.position.x, oldPosition.y, oldPosition.z);
                 if (checkObstacleCollisions()) {
                     // Z movement caused collision, revert Z
                     yawObject.position.z = oldPosition.z;
@@ -1591,9 +1563,6 @@
             if (yawObject.position.x > 48) yawObject.position.x = 48;
             if (yawObject.position.z < -48) yawObject.position.z = -48;
             if (yawObject.position.z > 48) yawObject.position.z = 48;
-            
-            // Maintain player height
-            yawObject.position.y = 1.6;
         }
         
         function checkObstacleCollisions() {
@@ -1640,51 +1609,60 @@
         }
         
         function animate() {
+            if (!gameStarted) return;
+            
             frameId = requestAnimationFrame(animate);
             
-            if (gameStarted) {
-                // Smoothly interpolate camera rotation to target rotation
-                currentYaw += (targetYaw - currentYaw) * 0.2;
-                currentPitch += (targetPitch - currentPitch) * 0.2;
-                
-                // Apply rotation to camera
-                yawObject.rotation.y = currentYaw;
-                pitchObject.rotation.x = currentPitch;
-                
-                // Add slight weapon sway based on movement
-                if (currentWeaponModel) {
-                    currentWeaponModel.rotation.x = Math.sin(performance.now() * 0.002) * 0.05;
-                    currentWeaponModel.rotation.y = Math.cos(performance.now() * 0.001) * 0.05;
-                }
-                
-                // Update debug direction indicator
-                updateDebugDirectionIndicator();
-                
-                // Update player movement
-                updatePlayerMovement();
-                
-                // Check for pickups
-                checkPickupCollisions();
-                
-                // Update enemies
-                updateEnemies();
-                
-                // Update projectiles
-                updateProjectiles();
-                
-                // Animate pickups
-                animatePickups();
-                
-                // Auto-shoot if holding mouse button
-                if (mouseIsDown) {
-                    shoot();
-                }
-                
-                // Update position display
-                updatePositionDisplay();
+            const time = performance.now() / 1000;
+            const delta = (time - prevTime) * 1000;
+            prevTime = time;
+            
+            // Smoothly interpolate camera rotation to target rotation
+            currentYaw += (targetYaw - currentYaw) * 0.2;
+            currentPitch += (targetPitch - currentPitch) * 0.2;
+            
+            // Apply rotation to camera
+            yawObject.rotation.y = currentYaw;
+            pitchObject.rotation.x = currentPitch;
+            
+            // Add slight weapon sway based on movement
+            if (currentWeaponModel) {
+                currentWeaponModel.rotation.x = Math.sin(performance.now() * 0.002) * 0.05;
+                currentWeaponModel.rotation.y = Math.cos(performance.now() * 0.001) * 0.05;
             }
             
-            // Render
+            // Update debug direction indicator
+            updateDebugDirectionIndicator();
+            
+            // Update player movement
+            updatePlayerMovement(delta);
+            
+            // Update enemy positions
+            updateEnemies();
+            
+            // Update projectiles
+            updateProjectiles();
+            
+            // Check for pickups
+            checkPickupCollisions();
+            
+            // Auto-shoot if holding mouse button
+            if (mouseIsDown) {
+                shoot();
+            }
+            
+            // Update position display
+            updatePositionDisplay();
+            
+            // Update debug info if enabled
+            if (debugMode) {
+                updateDebugInfo();
+            }
+            
+            // Animate pickups
+            animatePickups();
+            
+            // Render the scene
             renderer.render(scene, camera);
         }
         
@@ -1915,7 +1893,7 @@
             fallbackMsg.style.borderRadius = '5px';
             fallbackMsg.style.zIndex = '50';
             fallbackMsg.style.pointerEvents = 'none';
-            fallbackMsg.innerHTML = 'WASD or Arrow Keys to move | Mouse to aim | Click or SPACE to shoot | 1-3 to switch weapons | 0 or ` to toggle debug';
+            fallbackMsg.innerHTML = 'WASD or Arrow Keys to move | SPACE to jump | Move mouse to aim | Click to shoot | 1-3 to switch weapons | 0 or ` to toggle debug';
             document.body.appendChild(fallbackMsg);
         }
         
