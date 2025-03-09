@@ -264,6 +264,10 @@
         let currentPitch = 0;
         let mouseSensitivity = 0.002;
         
+        // Weapon models
+        let weaponModels = {};
+        let currentWeaponModel = null;
+        
         // Track all obstacles for collision detection
         let obstacles = [];
         
@@ -287,6 +291,9 @@
             yawObject.position.z = -10; // Start away from center
             yawObject.add(pitchObject);
             scene.add(yawObject);
+            
+            // Create weapon models
+            createWeaponModels();
             
             // Create renderer
             renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gameCanvas'), antialias: true });
@@ -727,7 +734,130 @@
                 weapons[type].active = false;
             }
             weapons[weaponType].active = true;
+            
+            // Update visible weapon model
+            updateWeaponModel(weaponType);
+            
             updateHUD();
+        }
+        
+        function updateWeaponModel(weaponType) {
+            // Hide current weapon model if exists
+            if (currentWeaponModel) {
+                currentWeaponModel.visible = false;
+            }
+            
+            // Show the selected weapon model
+            currentWeaponModel = weaponModels[weaponType];
+            if (currentWeaponModel) {
+                currentWeaponModel.visible = true;
+                
+                // Add weapon switching animation
+                animateWeaponSwitch(currentWeaponModel);
+            }
+        }
+        
+        function animateWeaponSwitch(weaponModel) {
+            // Store original position
+            const originalY = weaponModel.position.y;
+            
+            // Start from below view
+            weaponModel.position.y = originalY - 0.5;
+            weaponModel.rotation.x = 0.5;
+            
+            // Animate to normal position
+            const startTime = performance.now();
+            const duration = 300; // milliseconds
+            
+            function animateStep() {
+                const now = performance.now();
+                const elapsed = now - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // Ease-out function
+                const easeProgress = 1 - Math.pow(1 - progress, 3);
+                
+                // Update position and rotation
+                weaponModel.position.y = originalY - 0.5 + (0.5 * easeProgress);
+                weaponModel.rotation.x = 0.5 - (0.5 * easeProgress);
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animateStep);
+                }
+            }
+            
+            animateStep();
+        }
+        
+        function createWeaponModels() {
+            // Create a container for all weapon models
+            const weaponContainer = new THREE.Object3D();
+            
+            // Position the weapon container in the bottom right of the view
+            weaponContainer.position.set(0.3, -0.3, -0.5);
+            camera.add(weaponContainer);
+            
+            // Create blaster model
+            const blasterGeometry = new THREE.BoxGeometry(0.08, 0.08, 0.3);
+            const blasterMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x00ffff,
+                emissive: 0x00ffff,
+                emissiveIntensity: 0.5
+            });
+            weaponModels.blaster = new THREE.Mesh(blasterGeometry, blasterMaterial);
+            weaponModels.blaster.position.set(0, 0, 0);
+            weaponContainer.add(weaponModels.blaster);
+            
+            // Create shotgun model
+            const shotgunGeometry = new THREE.BoxGeometry(0.1, 0.08, 0.25);
+            const shotgunBarrelGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.3, 8);
+            const shotgunMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xff9900,
+                emissive: 0xff9900,
+                emissiveIntensity: 0.5
+            });
+            
+            weaponModels.shotgun = new THREE.Group();
+            
+            const shotgunBody = new THREE.Mesh(shotgunGeometry, shotgunMaterial);
+            weaponModels.shotgun.add(shotgunBody);
+            
+            const shotgunBarrel = new THREE.Mesh(shotgunBarrelGeometry, shotgunMaterial);
+            shotgunBarrel.rotation.x = Math.PI / 2;
+            shotgunBarrel.position.set(0, 0, -0.15);
+            weaponModels.shotgun.add(shotgunBarrel);
+            
+            weaponModels.shotgun.position.set(0, 0, 0);
+            weaponModels.shotgun.visible = false;
+            weaponContainer.add(weaponModels.shotgun);
+            
+            // Create rocket launcher model
+            const rocketLauncherGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.4, 8);
+            const rocketLauncherMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xff0000,
+                emissive: 0xff0000,
+                emissiveIntensity: 0.5
+            });
+            
+            weaponModels.rocketLauncher = new THREE.Group();
+            
+            const rocketLauncherBody = new THREE.Mesh(rocketLauncherGeometry, rocketLauncherMaterial);
+            rocketLauncherBody.rotation.x = Math.PI / 2;
+            weaponModels.rocketLauncher.add(rocketLauncherBody);
+            
+            const rocketLauncherSight = new THREE.Mesh(
+                new THREE.BoxGeometry(0.03, 0.03, 0.1),
+                rocketLauncherMaterial
+            );
+            rocketLauncherSight.position.set(0, 0.07, 0);
+            weaponModels.rocketLauncher.add(rocketLauncherSight);
+            
+            weaponModels.rocketLauncher.position.set(0, 0, 0);
+            weaponModels.rocketLauncher.visible = false;
+            weaponContainer.add(weaponModels.rocketLauncher);
+            
+            // Set initial weapon model
+            updateWeaponModel('blaster');
         }
         
         function getActiveWeapon() {
@@ -806,14 +936,70 @@
         function createMuzzleFlash() {
             // Create a point light for muzzle flash
             const muzzleLight = new THREE.PointLight(0xffff00, 5, 3);
-            muzzleLight.position.copy(camera.position);
-            muzzleLight.position.add(yawObject.position);
-            scene.add(muzzleLight);
+            
+            // Position the light at the end of the current weapon
+            if (currentWeaponModel) {
+                // Get the weapon type
+                const weaponType = getActiveWeaponType();
+                
+                // Set position based on weapon type
+                if (weaponType === 'blaster') {
+                    muzzleLight.position.set(0.3, -0.3, -0.8);
+                } else if (weaponType === 'shotgun') {
+                    muzzleLight.position.set(0.3, -0.3, -0.9);
+                } else if (weaponType === 'rocketLauncher') {
+                    muzzleLight.position.set(0.3, -0.3, -0.9);
+                }
+            } else {
+                muzzleLight.position.copy(camera.position);
+            }
+            
+            // Add to camera
+            camera.add(muzzleLight);
             
             // Remove the light after a short delay
             setTimeout(() => {
-                scene.remove(muzzleLight);
+                camera.remove(muzzleLight);
             }, 50);
+            
+            // Also add a visual flash effect
+            const flashGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+            const flashMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xffff00,
+                transparent: true,
+                opacity: 0.8
+            });
+            const flashMesh = new THREE.Mesh(flashGeometry, flashMaterial);
+            
+            // Position at the end of the weapon
+            if (currentWeaponModel) {
+                const weaponType = getActiveWeaponType();
+                
+                if (weaponType === 'blaster') {
+                    flashMesh.position.set(0.3, -0.3, -0.8);
+                } else if (weaponType === 'shotgun') {
+                    flashMesh.position.set(0.3, -0.3, -0.9);
+                } else if (weaponType === 'rocketLauncher') {
+                    flashMesh.position.set(0.3, -0.3, -0.9);
+                }
+            }
+            
+            camera.add(flashMesh);
+            
+            // Animate and remove the flash
+            setTimeout(() => {
+                camera.remove(flashMesh);
+            }, 50);
+        }
+        
+        // Helper function to get the active weapon type
+        function getActiveWeaponType() {
+            for (const type in weapons) {
+                if (weapons[type].active) {
+                    return type;
+                }
+            }
+            return 'blaster';
         }
         
         function updateHUD() {
@@ -1323,6 +1509,12 @@
                 // Apply rotation to camera
                 yawObject.rotation.y = currentYaw;
                 pitchObject.rotation.x = currentPitch;
+                
+                // Add slight weapon sway based on movement
+                if (currentWeaponModel) {
+                    currentWeaponModel.rotation.x = Math.sin(performance.now() * 0.002) * 0.05;
+                    currentWeaponModel.rotation.y = Math.cos(performance.now() * 0.001) * 0.05;
+                }
                 
                 // Update player movement
                 updatePlayerMovement();
