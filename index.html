@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>Arena Shooter Prototype</title>
     <style>
         body { 
@@ -65,6 +68,15 @@
             text-shadow: 1px 1px 1px #000;
             pointer-events: none;
         }
+        #score {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            font-size: 24px;
+            text-shadow: 1px 1px 1px #000;
+            pointer-events: none;
+        }
         #instructions {
             position: absolute;
             top: 10px;
@@ -103,9 +115,50 @@
             cursor: pointer;
             border-radius: 5px;
         }
+        #game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 100;
+        }
+        #restart-button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 20px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        .final-score {
+            font-size: 24px;
+            margin: 10px;
+        }
+        #version-display {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            color: rgba(255,255,255,0.5);
+            font-size: 12px;
+            z-index: 100;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
+    <div id="version-display">v1.0.4</div>
     <div id="crosshair">+</div>
     <div id="hud">
         <div id="weapon-info">Current Weapon: Basic Blaster</div>
@@ -113,6 +166,7 @@
     </div>
     <div id="health-bar"><div id="health-fill"></div></div>
     <div id="ammo">Ammo: 100</div>
+    <div id="score">Score: 0</div>
     <div id="instructions">WASD to move | Move mouse to aim | Click to shoot | 1-3 to switch weapons</div>
     
     <div id="start-menu">
@@ -121,10 +175,19 @@
         <button id="start-button">Start Game</button>
     </div>
     
+    <div id="game-over">
+        <h1>Game Over</h1>
+        <div class="final-score">Final Score: 0</div>
+        <button id="restart-button">Play Again</button>
+    </div>
+    
     <canvas id="gameCanvas"></canvas>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.149.0/three.min.js"></script>
     <script>
+        // Game version - increment this when making changes
+        const GAME_VERSION = "1.0.4";
+        
         // Game variables
         let scene, camera, renderer;
         let player, playerDirection;
@@ -139,20 +202,76 @@
         let frameId = null;
         let health = 100;
         let lastShotTime = 0;
+        let score = 0;
+        let enemyTypes = ['basic', 'fast', 'tank'];
+        
+        // Movement speed
+        const MOVE_SPEED = 0.15;
+        const TURN_SPEED = 0.05;
+        
+        // Player direction (in radians)
+        let playerRotation = 0;
         
         // Weapon system
         const weapons = {
-            blaster: { name: "Basic Blaster", damage: 10, ammo: 100, maxAmmo: 100, fireRate: 5, active: true },
-            shotgun: { name: "Shotgun", damage: 25, ammo: 0, maxAmmo: 30, fireRate: 2, active: false },
-            rocketLauncher: { name: "Rocket Launcher", damage: 50, ammo: 0, maxAmmo: 10, fireRate: 1, active: false }
+            blaster: { 
+                name: "Basic Blaster", 
+                damage: 10, 
+                ammo: 100, 
+                maxAmmo: 100, 
+                fireRate: 5, 
+                active: true,
+                projectileColor: 0x00ffff,
+                projectileSize: 0.1,
+                projectileSpeed: 0.5,
+                projectileCount: 1
+            },
+            shotgun: { 
+                name: "Shotgun", 
+                damage: 15, 
+                ammo: 0, 
+                maxAmmo: 30, 
+                fireRate: 2, 
+                active: false,
+                projectileColor: 0xff9900,
+                projectileSize: 0.05,
+                projectileSpeed: 0.6,
+                projectileCount: 8,
+                spread: 0.2
+            },
+            rocketLauncher: { 
+                name: "Rocket Launcher", 
+                damage: 50, 
+                ammo: 0, 
+                maxAmmo: 10, 
+                fireRate: 1, 
+                active: false,
+                projectileColor: 0xff0000,
+                projectileSize: 0.2,
+                projectileSpeed: 0.3,
+                projectileCount: 1,
+                explosive: true,
+                explosionRadius: 3
+            }
         };
         
         // Mouse control variables
         const pitchObject = new THREE.Object3D(); // For looking up/down
         const yawObject = new THREE.Object3D();   // For looking left/right
+        let targetYaw = 0;
+        let targetPitch = 0;
+        let currentYaw = 0;
+        let currentPitch = 0;
+        let mouseSensitivity = 0.002;
+        
+        // Track all obstacles for collision detection
+        let obstacles = [];
         
         // Initialize game
         function init() {
+            // Update version display
+            document.getElementById('version-display').textContent = `v${GAME_VERSION}`;
+            
             // Create scene
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x222222);
@@ -164,6 +283,8 @@
             // Setup player control objects
             pitchObject.add(camera);
             yawObject.position.y = 1.6; // Player height
+            yawObject.position.x = -10; // Start away from center
+            yawObject.position.z = -10; // Start away from center
             yawObject.add(pitchObject);
             scene.add(yawObject);
             
@@ -171,6 +292,8 @@
             renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gameCanvas'), antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             
             // Setup lighting
             const ambientLight = new THREE.AmbientLight(0x404040);
@@ -178,6 +301,9 @@
             
             const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
             directionalLight.position.set(1, 1, 1);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
             scene.add(directionalLight);
             
             // Create level
@@ -188,12 +314,19 @@
             
             // Start button event listener
             document.getElementById('start-button').addEventListener('click', startGame);
+            
+            // Restart button event listener
+            document.getElementById('restart-button').addEventListener('click', restartGame);
         }
         
         function createLevel() {
             // Create floor
             const floorGeometry = new THREE.PlaneGeometry(100, 100);
-            const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.8 });
+            // Use a simple material instead of texture that might not load
+            const floorMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x333333,
+                roughness: 0.8 
+            });
             const floor = new THREE.Mesh(floorGeometry, floorMaterial);
             floor.rotation.x = -Math.PI / 2;
             floor.receiveShadow = true;
@@ -221,16 +354,48 @@
             createEnemy(35, 35);
             createEnemy(-35, 35);
             createEnemy(0, -35);
+            
+            // Add skybox
+            const skyboxGeometry = new THREE.BoxGeometry(1000, 1000, 1000);
+            const skyboxMaterials = [
+                new THREE.MeshBasicMaterial({ color: 0x000833, side: THREE.BackSide }),
+                new THREE.MeshBasicMaterial({ color: 0x000833, side: THREE.BackSide }),
+                new THREE.MeshBasicMaterial({ color: 0x000833, side: THREE.BackSide }),
+                new THREE.MeshBasicMaterial({ color: 0x000833, side: THREE.BackSide }),
+                new THREE.MeshBasicMaterial({ color: 0x000833, side: THREE.BackSide }),
+                new THREE.MeshBasicMaterial({ color: 0x000833, side: THREE.BackSide })
+            ];
+            const skybox = new THREE.Mesh(skyboxGeometry, skyboxMaterials);
+            scene.add(skybox);
+            
+            // Add some particles for atmosphere
+            createParticles();
         }
         
         function createWall(width, height, depth, x, y, z) {
             const wallGeometry = new THREE.BoxGeometry(width, height, depth);
-            const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.7 });
+            // Use a simple material instead of texture that might not load
+            const wallMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x555555,
+                roughness: 0.7 
+            });
             const wall = new THREE.Mesh(wallGeometry, wallMaterial);
             wall.position.set(x, y, z);
             wall.castShadow = true;
             wall.receiveShadow = true;
             scene.add(wall);
+            
+            // Add to obstacles array for collision detection
+            obstacles.push({
+                mesh: wall,
+                width: width,
+                height: height,
+                depth: depth,
+                x: x,
+                y: y,
+                z: z
+            });
+            
             return wall;
         }
         
@@ -266,91 +431,253 @@
         }
         
         function createEnemy(x, z) {
-            const geometry = new THREE.CylinderGeometry(0.5, 0.5, 2, 8);
-            const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-            const enemy = new THREE.Mesh(geometry, material);
-            enemy.position.set(x, 1.5, z);
-            enemy.userData = { 
-                type: 'enemy', 
-                health: 50,
-                speed: 0.03,
-                lastAttack: 0
-            };
-            scene.add(enemy);
+            // Randomly select enemy type
+            const enemyType = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
             
+            let geometry, material, health, speed, color, size;
+            
+            switch(enemyType) {
+                case 'fast':
+                    geometry = new THREE.CylinderGeometry(0.4, 0.4, 2, 8);
+                    color = 0x00ff00;
+                    health = 30;
+                    speed = 0.06;
+                    size = 0.8;
+                    break;
+                case 'tank':
+                    geometry = new THREE.CylinderGeometry(0.7, 0.7, 2.5, 8);
+                    color = 0x0000ff;
+                    health = 100;
+                    speed = 0.02;
+                    size = 1.2;
+                    break;
+                default: // basic
+                    geometry = new THREE.CylinderGeometry(0.5, 0.5, 2, 8);
+                    color = 0xff0000;
+                    health = 50;
+                    speed = 0.03;
+                    size = 1;
+            }
+            
+            material = new THREE.MeshStandardMaterial({ color: color });
+            const enemy = new THREE.Mesh(geometry, material);
+            enemy.position.set(x, 1.5 * size, z);
+            enemy.scale.set(size, size, size);
+            
+            enemy.userData = { 
+                type: 'enemy',
+                enemyType: enemyType,
+                health: health,
+                maxHealth: health,
+                speed: speed,
+                lastAttack: 0,
+                scoreValue: enemyType === 'tank' ? 30 : (enemyType === 'fast' ? 20 : 10)
+            };
+            
+            // Add health bar to enemy
+            const healthBarGeometry = new THREE.PlaneGeometry(1, 0.1);
+            const healthBarMaterial = new THREE.MeshBasicMaterial({ color: 0x333333 });
+            const healthBar = new THREE.Mesh(healthBarGeometry, healthBarMaterial);
+            healthBar.position.y = 2 * size;
+            enemy.add(healthBar);
+            
+            const healthFillGeometry = new THREE.PlaneGeometry(1, 0.1);
+            const healthFillMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+            const healthFill = new THREE.Mesh(healthFillGeometry, healthFillMaterial);
+            healthFill.position.z = 0.01;
+            healthBar.add(healthFill);
+            
+            enemy.userData.healthFill = healthFill;
+            
+            scene.add(enemy);
             enemies.push(enemy);
             
             return enemy;
         }
         
+        function createParticles() {
+            const particleCount = 500;
+            const particles = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+            
+            for (let i = 0; i < particleCount * 3; i += 3) {
+                positions[i] = (Math.random() - 0.5) * 100;
+                positions[i + 1] = Math.random() * 50;
+                positions[i + 2] = (Math.random() - 0.5) * 100;
+            }
+            
+            particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            
+            const particleMaterial = new THREE.PointsMaterial({
+                color: 0x888888,
+                size: 0.1,
+                transparent: true,
+                opacity: 0.5
+            });
+            
+            const particleSystem = new THREE.Points(particles, particleMaterial);
+            scene.add(particleSystem);
+        }
+        
         function setupEventListeners() {
-            // Keyboard controls
-            const onKeyDown = function(event) {
-                if (!gameStarted) return;
+            // Get the canvas element
+            const canvas = document.getElementById('gameCanvas');
+            
+            // Function to handle keydown events
+            function handleKeyDown(event) {
+                if (!gameStarted) {
+                    console.log("Key pressed but game not started:", event.keyCode);
+                    return;
+                }
                 
-                switch (event.code) {
-                    case 'KeyW':
-                    case 'ArrowUp':
+                console.log("Key down:", event.keyCode, "Key:", event.key);
+                
+                // Handle by keyCode first (for compatibility)
+                switch (event.keyCode) {
+                    case 87: // W
+                        console.log("W key pressed");
                         moveForward = true;
                         break;
-                    case 'KeyS':
-                    case 'ArrowDown':
+                    case 38: // Up arrow
+                        console.log("Up arrow pressed");
+                        moveForward = true;
+                        break;
+                    case 83: // S
+                        console.log("S key pressed");
                         moveBackward = true;
                         break;
-                    case 'KeyA':
-                    case 'ArrowLeft':
+                    case 40: // Down arrow
+                        console.log("Down arrow pressed");
+                        moveBackward = true;
+                        break;
+                    case 65: // A
+                        console.log("A key pressed");
                         moveLeft = true;
                         break;
-                    case 'KeyD':
-                    case 'ArrowRight':
+                    case 37: // Left arrow
+                        console.log("Left arrow pressed");
+                        moveLeft = true;
+                        break;
+                    case 68: // D
+                        console.log("D key pressed");
                         moveRight = true;
                         break;
-                    case 'Digit1':
+                    case 39: // Right arrow
+                        console.log("Right arrow pressed");
+                        moveRight = true;
+                        break;
+                    case 49: // 1
                         switchWeapon('blaster');
                         break;
-                    case 'Digit2':
+                    case 50: // 2
                         if (weapons.shotgun.ammo > 0) switchWeapon('shotgun');
                         break;
-                    case 'Digit3':
+                    case 51: // 3
                         if (weapons.rocketLauncher.ammo > 0) switchWeapon('rocketLauncher');
                         break;
+                    case 32: // Space
+                        shoot();
+                        break;
+                    default:
+                        // Fallback to key property for browsers that don't support keyCode
+                        handleKeyByName(event.key, true);
+                        break;
                 }
-            };
+            }
             
-            const onKeyUp = function(event) {
-                switch (event.code) {
-                    case 'KeyW':
-                    case 'ArrowUp':
+            // Function to handle keyup events
+            function handleKeyUp(event) {
+                console.log("Key up:", event.keyCode, "Key:", event.key);
+                
+                // Handle by keyCode first (for compatibility)
+                switch (event.keyCode) {
+                    case 87: // W
+                        console.log("W key released");
                         moveForward = false;
                         break;
-                    case 'KeyS':
-                    case 'ArrowDown':
+                    case 38: // Up arrow
+                        console.log("Up arrow released");
+                        moveForward = false;
+                        break;
+                    case 83: // S
+                        console.log("S key released");
                         moveBackward = false;
                         break;
-                    case 'KeyA':
-                    case 'ArrowLeft':
+                    case 40: // Down arrow
+                        console.log("Down arrow released");
+                        moveBackward = false;
+                        break;
+                    case 65: // A
+                        console.log("A key released");
                         moveLeft = false;
                         break;
-                    case 'KeyD':
-                    case 'ArrowRight':
+                    case 37: // Left arrow
+                        console.log("Left arrow released");
+                        moveLeft = false;
+                        break;
+                    case 68: // D
+                        console.log("D key released");
                         moveRight = false;
                         break;
+                    case 39: // Right arrow
+                        console.log("Right arrow released");
+                        moveRight = false;
+                        break;
+                    default:
+                        // Fallback to key property for browsers that don't support keyCode
+                        handleKeyByName(event.key, false);
+                        break;
                 }
-            };
+            }
             
-            document.addEventListener('keydown', onKeyDown);
-            document.addEventListener('keyup', onKeyUp);
+            // Attach event listeners to both canvas and window
+            canvas.addEventListener('keydown', handleKeyDown);
+            canvas.addEventListener('keyup', handleKeyUp);
             
-            // Last known mouse position for controls
-            let lastMouseX = window.innerWidth / 2;
-            let lastMouseY = window.innerHeight / 2;
-            let targetYaw = 0;
-            let targetPitch = 0;
-            let currentYaw = 0;
-            let currentPitch = 0;
+            // Also attach to window as a fallback
+            window.addEventListener('keydown', handleKeyDown);
+            window.addEventListener('keyup', handleKeyUp);
             
-            // Mouse controls for looking
-            const onMouseMove = function(event) {
+            // Helper function to handle keys by name
+            function handleKeyByName(key, isDown) {
+                switch(key.toLowerCase()) {
+                    case 'w':
+                    case 'arrowup':
+                        console.log(isDown ? "W/Up key pressed" : "W/Up key released");
+                        moveForward = isDown;
+                        break;
+                    case 's':
+                    case 'arrowdown':
+                        console.log(isDown ? "S/Down key pressed" : "S/Down key released");
+                        moveBackward = isDown;
+                        break;
+                    case 'a':
+                    case 'arrowleft':
+                        console.log(isDown ? "A/Left key pressed" : "A/Left key released");
+                        moveLeft = isDown;
+                        break;
+                    case 'd':
+                    case 'arrowright':
+                        console.log(isDown ? "D/Right key pressed" : "D/Right key released");
+                        moveRight = isDown;
+                        break;
+                    case '1':
+                        if (isDown) switchWeapon('blaster');
+                        break;
+                    case '2':
+                        if (isDown && weapons.shotgun.ammo > 0) switchWeapon('shotgun');
+                        break;
+                    case '3':
+                        if (isDown && weapons.rocketLauncher.ammo > 0) switchWeapon('rocketLauncher');
+                        break;
+                    case ' ':
+                        if (isDown) shoot();
+                        break;
+                }
+            }
+            
+            // Mouse controls for aiming
+            canvas.addEventListener('mousemove', function(event) {
                 if (!gameStarted) return;
                 
                 // Get mouse position relative to center of screen
@@ -361,39 +688,28 @@
                 const mouseX = event.clientX;
                 const mouseY = event.clientY;
                 
-                // Check if mouse is within game canvas
-                const rect = renderer.domElement.getBoundingClientRect();
-                if (mouseX >= rect.left && mouseX <= rect.right &&
-                    mouseY >= rect.top && mouseY <= rect.bottom) {
-                    
-                    // Calculate target rotation based on distance from center
-                    targetYaw = -((mouseX - centerX) / centerX) * Math.PI * 0.5;
-                    targetPitch = -((mouseY - centerY) / centerY) * Math.PI * 0.25;
-                    
-                    // Store current mouse position
-                    lastMouseX = mouseX;
-                    lastMouseY = mouseY;
-                }
-            };
-            
-            document.addEventListener('mousemove', onMouseMove);
+                // Calculate target rotation based on distance from center
+                targetYaw = -((mouseX - centerX) / centerX) * Math.PI * 0.5;
+                targetPitch = -((mouseY - centerY) / centerY) * Math.PI * 0.25;
+            });
             
             // Mouse click for shooting
-            const onMouseDown = function(event) {
+            canvas.addEventListener('mousedown', function(event) {
                 if (!gameStarted) return;
                 
+                console.log("Mouse down:", event.button);
+                
                 if (event.button === 0) { // Left click
-                    // Check if clicking on canvas
-                    const rect = renderer.domElement.getBoundingClientRect();
-                    if (event.clientX >= rect.left && event.clientX <= rect.right &&
-                        event.clientY >= rect.top && event.clientY <= rect.bottom) {
-                        mouseIsDown = true;
-                        shoot();
-                    }
+                    mouseIsDown = true;
+                    shoot();
                 }
-            };
+            });
             
-            document.addEventListener('mousedown', onMouseDown);
+            canvas.addEventListener('mouseup', function(event) {
+                if (event.button === 0) {
+                    mouseIsDown = false;
+                }
+            });
             
             // Handle window resize
             window.addEventListener('resize', function() {
@@ -401,37 +717,10 @@
                 camera.updateProjectionMatrix();
                 renderer.setSize(window.innerWidth, window.innerHeight);
             });
-            
-            // Handle pointer lock errors
-            document.addEventListener('pointerlockerror', function() {
-                console.log('Pointer lock error');
-            });
         }
         
-        // Track if we're using fallback controls - default to using them now
-        let usingFallbackControls = true;
-        
-        function requestPointerLock() {
-            // Skip pointer lock entirely and just use fallback controls
-            console.log('Using fallback controls by default');
-            usingFallbackControls = true;
-            displayFallbackMessage();
-        }
-        
-        function displayFallbackMessage() {
-            const fallbackMsg = document.createElement('div');
-            fallbackMsg.style.position = 'absolute';
-            fallbackMsg.style.top = '70px';
-            fallbackMsg.style.left = '10px';
-            fallbackMsg.style.color = 'yellow';
-            fallbackMsg.style.backgroundColor = 'rgba(0,0,0,0.5)';
-            fallbackMsg.style.padding = '10px';
-            fallbackMsg.style.borderRadius = '5px';
-            fallbackMsg.style.zIndex = '50';
-            fallbackMsg.style.pointerEvents = 'none';
-            fallbackMsg.innerHTML = 'Move your mouse in the game window to aim | Click to shoot';
-            document.body.appendChild(fallbackMsg);
-        }
+        // Track mouse state
+        let mouseIsDown = false;
         
         function switchWeapon(weaponType) {
             for (const type in weapons) {
@@ -466,35 +755,65 @@
                 weapon.ammo--;
             }
             
-            // Create projectile
-            const projectileGeometry = new THREE.SphereGeometry(0.1, 8, 8);
-            const projectileMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff });
-            const projectile = new THREE.Mesh(projectileGeometry, projectileMaterial);
+            // Create projectiles based on weapon type
+            for (let i = 0; i < weapon.projectileCount; i++) {
+                // Create projectile
+                const projectileGeometry = new THREE.SphereGeometry(weapon.projectileSize, 8, 8);
+                const projectileMaterial = new THREE.MeshBasicMaterial({ color: weapon.projectileColor });
+                const projectile = new THREE.Mesh(projectileGeometry, projectileMaterial);
+                
+                // Position at camera position
+                projectile.position.copy(camera.position);
+                projectile.position.add(yawObject.position);
+                
+                // Get shooting direction
+                const direction = new THREE.Vector3(0, 0, -1);
+                direction.unproject(camera);
+                direction.sub(camera.position).normalize();
+                
+                // Add spread for shotgun
+                if (weapon.spread) {
+                    const spread = weapon.spread;
+                    direction.x += (Math.random() - 0.5) * spread;
+                    direction.y += (Math.random() - 0.5) * spread;
+                    direction.z += (Math.random() - 0.5) * spread;
+                    direction.normalize();
+                }
+                
+                // Store projectile data
+                projectile.userData = {
+                    type: 'projectile',
+                    direction: direction,
+                    speed: weapon.projectileSpeed,
+                    damage: weapon.damage,
+                    timeCreated: now,
+                    explosive: weapon.explosive || false,
+                    explosionRadius: weapon.explosionRadius || 0
+                };
+                
+                // Add to scene and tracking array
+                scene.add(projectile);
+                projectiles.push(projectile);
+            }
             
-            // Position at camera position
-            projectile.position.copy(camera.position);
-            projectile.position.add(yawObject.position);
-            
-            // Get shooting direction
-            const direction = new THREE.Vector3(0, 0, -1);
-            direction.unproject(camera);
-            direction.sub(camera.position).normalize();
-            
-            // Store projectile data
-            projectile.userData = {
-                type: 'projectile',
-                direction: direction,
-                speed: 0.5,
-                damage: weapon.damage,
-                timeCreated: now
-            };
-            
-            // Add to scene and tracking array
-            scene.add(projectile);
-            projectiles.push(projectile);
+            // Add muzzle flash effect
+            createMuzzleFlash();
             
             // Update HUD
             updateHUD();
+        }
+        
+        function createMuzzleFlash() {
+            // Create a point light for muzzle flash
+            const muzzleLight = new THREE.PointLight(0xffff00, 5, 3);
+            muzzleLight.position.copy(camera.position);
+            muzzleLight.position.add(yawObject.position);
+            scene.add(muzzleLight);
+            
+            // Remove the light after a short delay
+            setTimeout(() => {
+                scene.remove(muzzleLight);
+            }, 50);
         }
         
         function updateHUD() {
@@ -502,6 +821,7 @@
             document.getElementById('weapon-info').textContent = `Current Weapon: ${weapon.name}`;
             document.getElementById('ammo').textContent = `Ammo: ${weapon.name === "Basic Blaster" ? "∞" : weapon.ammo}`;
             document.getElementById('health-fill').style.width = `${health}%`;
+            document.getElementById('score').textContent = `Score: ${score}`;
         }
         
         function checkPickupCollisions() {
@@ -557,23 +877,65 @@
                 // Look at player
                 enemy.lookAt(yawObject.position);
                 
+                // Update enemy health bar
+                if (enemy.userData.healthFill) {
+                    const healthPercent = enemy.userData.health / enemy.userData.maxHealth;
+                    enemy.userData.healthFill.scale.x = healthPercent;
+                    enemy.userData.healthFill.position.x = (healthPercent - 1) / 2;
+                    
+                    // Change color based on health
+                    if (healthPercent < 0.3) {
+                        enemy.userData.healthFill.material.color.set(0xff0000);
+                    } else if (healthPercent < 0.6) {
+                        enemy.userData.healthFill.material.color.set(0xffff00);
+                    } else {
+                        enemy.userData.healthFill.material.color.set(0x00ff00);
+                    }
+                }
+                
+                // Make health bar face camera
+                if (enemy.children.length > 0) {
+                    enemy.children[0].lookAt(camera.position);
+                }
+                
                 // Check if enemy can attack player
                 const distanceToPlayer = enemy.position.distanceTo(yawObject.position);
                 const now = performance.now();
                 
-                if (distanceToPlayer < 2 && now - enemy.userData.lastAttack > 1000) {
+                // Different attack behaviors based on enemy type
+                let attackDistance = 2;
+                let attackDamage = 10;
+                let attackCooldown = 1000;
+                
+                switch(enemy.userData.enemyType) {
+                    case 'fast':
+                        attackDistance = 1.5;
+                        attackDamage = 5;
+                        attackCooldown = 500;
+                        break;
+                    case 'tank':
+                        attackDistance = 2.5;
+                        attackDamage = 20;
+                        attackCooldown = 2000;
+                        break;
+                }
+                
+                if (distanceToPlayer < attackDistance && now - enemy.userData.lastAttack > attackCooldown) {
                     enemy.userData.lastAttack = now;
-                    health -= 10;
+                    health -= attackDamage;
+                    
+                    // Visual feedback for taking damage
+                    document.body.style.backgroundColor = "rgba(255,0,0,0.3)";
+                    setTimeout(() => {
+                        document.body.style.backgroundColor = "";
+                    }, 100);
                     
                     // Update health bar
                     updateHUD();
                     
                     // Game over check
                     if (health <= 0) {
-                        // Reset player health and position
-                        health = 100;
-                        yawObject.position.set(0, 1.6, 0);
-                        updateHUD();
+                        gameOver();
                     }
                 }
                 
@@ -586,12 +948,31 @@
                         // Hit an enemy
                         enemy.userData.health -= projectile.userData.damage;
                         
+                        // Visual feedback for hit
+                        enemy.material.emissive = new THREE.Color(0xff0000);
+                        setTimeout(() => {
+                            enemy.material.emissive = new THREE.Color(0x000000);
+                        }, 100);
+                        
+                        // Handle explosive projectiles
+                        if (projectile.userData.explosive) {
+                            createExplosion(projectile.position, projectile.userData.explosionRadius, projectile.userData.damage);
+                        }
+                        
                         // Remove projectile
                         scene.remove(projectile);
                         projectiles.splice(j, 1);
                         
                         // Check if enemy is defeated
                         if (enemy.userData.health <= 0) {
+                            // Add score
+                            score += enemy.userData.scoreValue;
+                            updateHUD();
+                            
+                            // Create score popup
+                            createScorePopup(enemy.position, enemy.userData.scoreValue);
+                            
+                            // Remove enemy
                             scene.remove(enemy);
                             enemies.splice(i, 1);
                             
@@ -610,6 +991,128 @@
             }
         }
         
+        function createExplosion(position, radius, damage) {
+            // Visual explosion effect
+            const explosionGeometry = new THREE.SphereGeometry(radius, 16, 16);
+            const explosionMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xff9900, 
+                transparent: true, 
+                opacity: 0.7 
+            });
+            const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
+            explosion.position.copy(position);
+            scene.add(explosion);
+            
+            // Add explosion light
+            const explosionLight = new THREE.PointLight(0xff5500, 5, radius * 2);
+            explosionLight.position.copy(position);
+            scene.add(explosionLight);
+            
+            // Damage enemies in radius
+            for (let i = 0; i < enemies.length; i++) {
+                const enemy = enemies[i];
+                const distance = enemy.position.distanceTo(position);
+                
+                if (distance <= radius) {
+                    // Calculate damage based on distance (more damage closer to center)
+                    const damageMultiplier = 1 - (distance / radius);
+                    const explosionDamage = damage * damageMultiplier;
+                    enemy.userData.health -= explosionDamage;
+                    
+                    // Check if enemy is defeated
+                    if (enemy.userData.health <= 0) {
+                        scene.remove(enemy);
+                        enemies.splice(i, 1);
+                        i--; // Adjust index since we removed an element
+                        
+                        // Respawn enemy after delay
+                        setTimeout(() => {
+                            createEnemy(
+                                (Math.random() - 0.5) * 80,
+                                (Math.random() - 0.5) * 80
+                            );
+                        }, 5000);
+                    }
+                }
+            }
+            
+            // Check if player is in explosion radius
+            const distanceToPlayer = yawObject.position.distanceTo(position);
+            if (distanceToPlayer <= radius) {
+                const damageMultiplier = 1 - (distanceToPlayer / radius);
+                const explosionDamage = damage * 0.5 * damageMultiplier; // Reduced self-damage
+                health -= explosionDamage;
+                updateHUD();
+                
+                // Game over check
+                if (health <= 0) {
+                    health = 100;
+                    yawObject.position.set(-10, 1.6, -10);
+                    updateHUD();
+                }
+            }
+            
+            // Fade out and remove explosion
+            let opacity = 0.7;
+            const fadeInterval = setInterval(() => {
+                opacity -= 0.05;
+                explosionMaterial.opacity = opacity;
+                explosionLight.intensity = opacity * 5;
+                
+                if (opacity <= 0) {
+                    clearInterval(fadeInterval);
+                    scene.remove(explosion);
+                    scene.remove(explosionLight);
+                }
+            }, 50);
+        }
+        
+        function createScorePopup(position, value) {
+            // Create a div for the score popup
+            const scoreDiv = document.createElement('div');
+            scoreDiv.textContent = '+' + value;
+            scoreDiv.style.position = 'absolute';
+            scoreDiv.style.color = '#ffff00';
+            scoreDiv.style.fontSize = '24px';
+            scoreDiv.style.fontWeight = 'bold';
+            scoreDiv.style.textShadow = '0 0 5px #000';
+            scoreDiv.style.pointerEvents = 'none';
+            
+            // Convert 3D position to screen position
+            const vector = new THREE.Vector3();
+            vector.copy(position);
+            vector.y += 2; // Position above enemy
+            
+            // Project position to screen coordinates
+            vector.project(camera);
+            
+            // Convert to CSS coordinates
+            const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+            const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+            
+            scoreDiv.style.left = x + 'px';
+            scoreDiv.style.top = y + 'px';
+            
+            document.body.appendChild(scoreDiv);
+            
+            // Animate and remove
+            let opacity = 1;
+            let posY = y;
+            
+            const animateInterval = setInterval(() => {
+                opacity -= 0.05;
+                posY -= 2;
+                
+                scoreDiv.style.opacity = opacity;
+                scoreDiv.style.top = posY + 'px';
+                
+                if (opacity <= 0) {
+                    clearInterval(animateInterval);
+                    document.body.removeChild(scoreDiv);
+                }
+            }, 50);
+        }
+        
         function updateProjectiles() {
             const now = performance.now();
             
@@ -620,6 +1123,20 @@
                 const moveVector = projectile.userData.direction.clone();
                 moveVector.multiplyScalar(projectile.userData.speed);
                 projectile.position.add(moveVector);
+                
+                // Check for wall collisions
+                if (projectile.position.x < -49 || projectile.position.x > 49 ||
+                    projectile.position.z < -49 || projectile.position.z > 49) {
+                    
+                    // Handle explosive projectiles
+                    if (projectile.userData.explosive) {
+                        createExplosion(projectile.position, projectile.userData.explosionRadius, projectile.userData.damage);
+                    }
+                    
+                    scene.remove(projectile);
+                    projectiles.splice(i, 1);
+                    continue;
+                }
                 
                 // Remove projectiles after 2 seconds or if they go too far
                 if (now - projectile.userData.timeCreated > 2000 || 
@@ -640,26 +1157,107 @@
         }
         
         function updatePlayerMovement() {
-            const time = performance.now();
-            const delta = (time - prevTime) / 1000;
+            // Simple direct movement approach
+            let moveX = 0;
+            let moveZ = 0;
             
-            velocity.x -= velocity.x * 10.0 * delta;
-            velocity.z -= velocity.z * 10.0 * delta;
+            // Calculate movement direction
+            if (moveForward) moveZ -= MOVE_SPEED;
+            if (moveBackward) moveZ += MOVE_SPEED;
+            if (moveLeft) moveX -= MOVE_SPEED;
+            if (moveRight) moveX += MOVE_SPEED;
             
-            direction.z = Number(moveForward) - Number(moveBackward);
-            direction.x = Number(moveRight) - Number(moveLeft);
-            direction.normalize();
+            // Only log when there's actual movement or state changes
+            if (!updatePlayerMovement.lastMoveState) {
+                updatePlayerMovement.lastMoveState = {
+                    forward: false,
+                    backward: false,
+                    left: false,
+                    right: false
+                };
+            }
             
-            if (moveForward || moveBackward) velocity.z -= direction.z * 400.0 * delta;
-            if (moveLeft || moveRight) velocity.x -= direction.x * 400.0 * delta;
+            if (moveForward !== updatePlayerMovement.lastMoveState.forward || 
+                moveBackward !== updatePlayerMovement.lastMoveState.backward || 
+                moveLeft !== updatePlayerMovement.lastMoveState.left || 
+                moveRight !== updatePlayerMovement.lastMoveState.right) {
+                
+                console.log("Movement state changed:", { 
+                    forward: moveForward, 
+                    backward: moveBackward, 
+                    left: moveLeft, 
+                    right: moveRight,
+                    moveX: moveX,
+                    moveZ: moveZ
+                });
+                
+                // Update last state
+                updatePlayerMovement.lastMoveState.forward = moveForward;
+                updatePlayerMovement.lastMoveState.backward = moveBackward;
+                updatePlayerMovement.lastMoveState.left = moveLeft;
+                updatePlayerMovement.lastMoveState.right = moveRight;
+            }
             
-            // Move the player
-            const moveX = -velocity.x * delta;
-            const moveZ = -velocity.z * delta;
+            if (moveX === 0 && moveZ === 0) {
+                return; // No movement needed
+            }
             
-            // Update position based on camera direction
-            yawObject.translateZ(moveZ);
-            yawObject.translateX(moveX);
+            // Store current position for collision detection
+            const oldPosition = {
+                x: yawObject.position.x,
+                y: yawObject.position.y,
+                z: yawObject.position.z
+            };
+            
+            // Get the camera's facing direction (yaw)
+            const angle = yawObject.rotation.y;
+            
+            // Try moving on both axes
+            let newPosition = {
+                x: oldPosition.x,
+                y: oldPosition.y,
+                z: oldPosition.z
+            };
+            
+            // Calculate movement based on camera direction
+            if (moveZ !== 0) {
+                // Forward/backward movement
+                newPosition.x -= Math.sin(angle) * moveZ;
+                newPosition.z -= Math.cos(angle) * moveZ;
+            }
+            
+            if (moveX !== 0) {
+                // Strafe movement (left/right)
+                newPosition.x -= Math.sin(angle + Math.PI/2) * moveX;
+                newPosition.z -= Math.cos(angle + Math.PI/2) * moveX;
+            }
+            
+            // Apply the new position
+            yawObject.position.set(newPosition.x, newPosition.y, newPosition.z);
+            
+            // Check for collisions with obstacles
+            if (checkObstacleCollisions()) {
+                // If collision detected, try to slide along walls
+                
+                // First, try just X movement
+                yawObject.position.set(newPosition.x, oldPosition.y, oldPosition.z);
+                if (checkObstacleCollisions()) {
+                    // X movement caused collision, revert X
+                    yawObject.position.x = oldPosition.x;
+                }
+                
+                // Then, try just Z movement
+                yawObject.position.set(yawObject.position.x, oldPosition.y, newPosition.z);
+                if (checkObstacleCollisions()) {
+                    // Z movement caused collision, revert Z
+                    yawObject.position.z = oldPosition.z;
+                }
+                
+                // If we're still colliding, revert to old position completely
+                if (checkObstacleCollisions()) {
+                    yawObject.position.set(oldPosition.x, oldPosition.y, oldPosition.z);
+                }
+            }
             
             // Simple boundary checks
             if (yawObject.position.x < -48) yawObject.position.x = -48;
@@ -669,8 +1267,49 @@
             
             // Maintain player height
             yawObject.position.y = 1.6;
+        }
+        
+        function checkObstacleCollisions() {
+            // Player collision radius - make it smaller for more forgiving collisions
+            const playerRadius = 0.2; // Reduced from 0.3
+            const playerPos = yawObject.position;
             
-            prevTime = time;
+            // Debug collision checks
+            let collisionDetected = false;
+            let collidedWith = null;
+            
+            // Check each obstacle
+            for (let i = 0; i < obstacles.length; i++) {
+                const obstacle = obstacles[i];
+                
+                // Simple box-sphere collision detection
+                // Calculate closest point on box to player
+                const closestX = Math.max(obstacle.x - obstacle.width/2, Math.min(playerPos.x, obstacle.x + obstacle.width/2));
+                const closestY = Math.max(obstacle.y - obstacle.height/2, Math.min(playerPos.y, obstacle.y + obstacle.height/2));
+                const closestZ = Math.max(obstacle.z - obstacle.depth/2, Math.min(playerPos.z, obstacle.z + obstacle.depth/2));
+                
+                // Calculate distance from closest point to player center
+                const distanceX = closestX - playerPos.x;
+                const distanceY = closestY - playerPos.y;
+                const distanceZ = closestZ - playerPos.z;
+                
+                const distanceSquared = distanceX * distanceX + distanceY * distanceY + distanceZ * distanceZ;
+                
+                // Check if distance is less than player radius
+                if (distanceSquared < playerRadius * playerRadius) {
+                    console.log("Collision detected with obstacle:", obstacle);
+                    collisionDetected = true;
+                    collidedWith = obstacle;
+                    break; // Exit loop on first collision
+                }
+            }
+            
+            // Only log when a collision is detected
+            if (collisionDetected && collidedWith) {
+                console.log("Collision detected! Player position:", playerPos, "Obstacle:", collidedWith);
+            }
+            
+            return collisionDetected;
         }
         
         function animate() {
@@ -678,12 +1317,12 @@
             
             if (gameStarted) {
                 // Smoothly interpolate camera rotation to target rotation
-                currentYaw += (targetYaw - currentYaw) * 0.1;
-                currentPitch += (targetPitch - currentPitch) * 0.1;
+                currentYaw += (targetYaw - currentYaw) * 0.2;
+                currentPitch += (targetPitch - currentPitch) * 0.2;
                 
                 // Apply rotation to camera
                 yawObject.rotation.y = currentYaw;
-                pitchObject.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, currentPitch));
+                pitchObject.rotation.x = currentPitch;
                 
                 // Update player movement
                 updatePlayerMovement();
@@ -704,13 +1343,44 @@
                 if (mouseIsDown) {
                     shoot();
                 }
+                
+                // Update position display
+                updatePositionDisplay();
             }
             
             // Render
             renderer.render(scene, camera);
         }
         
+        // Create a position display element
+        let positionDisplay = null;
+        
+        function updatePositionDisplay() {
+            if (!positionDisplay) {
+                positionDisplay = document.createElement('div');
+                positionDisplay.style.position = 'absolute';
+                positionDisplay.style.bottom = '10px';
+                positionDisplay.style.right = '10px';
+                positionDisplay.style.color = 'white';
+                positionDisplay.style.backgroundColor = 'rgba(0,0,0,0.5)';
+                positionDisplay.style.padding = '5px';
+                positionDisplay.style.borderRadius = '3px';
+                positionDisplay.style.fontSize = '12px';
+                positionDisplay.style.fontFamily = 'monospace';
+                positionDisplay.style.zIndex = '100';
+                document.body.appendChild(positionDisplay);
+            }
+            
+            // Round position values to 2 decimal places for readability
+            const x = Math.round(yawObject.position.x * 100) / 100;
+            const y = Math.round(yawObject.position.y * 100) / 100;
+            const z = Math.round(yawObject.position.z * 100) / 100;
+            
+            positionDisplay.textContent = `Position: (${x}, ${y}, ${z})`;
+        }
+        
         function startGame() {
+            console.log("Starting game");
             gameStarted = true;
             document.getElementById('start-menu').style.display = 'none';
             
@@ -731,27 +1401,142 @@
             
             // Display control instructions
             displayFallbackMessage();
+            
+            // Add keyboard focus to the canvas
+            const canvas = document.getElementById('gameCanvas');
+            canvas.focus();
+            canvas.setAttribute('tabindex', '0');
+            console.log("Canvas focused:", document.activeElement === canvas);
+            
+            // Force movement variables to false to ensure clean state
+            moveForward = false;
+            moveBackward = false;
+            moveLeft = false;
+            moveRight = false;
+            
+            // Test keyboard controls
+            testKeyboardControls();
+            
+            // Display version and collision info
+            displayVersionInfo();
         }
         
-        // Track mouse state
-        let mouseIsDown = false;
-        document.addEventListener('mousedown', (event) => {
-            if (event.button === 0) { // Left click only
-                const rect = renderer.domElement.getBoundingClientRect();
-                if (event.clientX >= rect.left && event.clientX <= rect.right &&
-                    event.clientY >= rect.top && event.clientY <= rect.bottom) {
-                    mouseIsDown = true;
-                }
+        function displayVersionInfo() {
+            const versionInfo = document.createElement('div');
+            versionInfo.style.position = 'absolute';
+            versionInfo.style.top = '30px';
+            versionInfo.style.left = '10px';
+            versionInfo.style.color = 'lime';
+            versionInfo.style.backgroundColor = 'rgba(0,0,0,0.5)';
+            versionInfo.style.padding = '10px';
+            versionInfo.style.borderRadius = '5px';
+            versionInfo.style.zIndex = '50';
+            versionInfo.style.pointerEvents = 'none';
+            versionInfo.innerHTML = `Version: ${GAME_VERSION}<br>Collision radius: 0.2<br>Wall sliding enabled`;
+            document.body.appendChild(versionInfo);
+            
+            // Remove after 10 seconds
+            setTimeout(() => {
+                document.body.removeChild(versionInfo);
+            }, 10000);
+        }
+        
+        function testKeyboardControls() {
+            console.log("Testing keyboard controls...");
+            console.log("Current movement state:", {
+                moveForward,
+                moveBackward,
+                moveLeft,
+                moveRight
+            });
+            console.log("Press WASD or arrow keys to move");
+            
+            // Create a temporary indicator to show keyboard status
+            const keyboardStatus = document.createElement('div');
+            keyboardStatus.style.position = 'absolute';
+            keyboardStatus.style.top = '120px';
+            keyboardStatus.style.left = '10px';
+            keyboardStatus.style.color = 'lime';
+            keyboardStatus.style.backgroundColor = 'rgba(0,0,0,0.5)';
+            keyboardStatus.style.padding = '10px';
+            keyboardStatus.style.borderRadius = '5px';
+            keyboardStatus.style.zIndex = '50';
+            keyboardStatus.style.pointerEvents = 'none';
+            keyboardStatus.innerHTML = 'Keyboard Controls: Active';
+            document.body.appendChild(keyboardStatus);
+            
+            // Remove after 5 seconds
+            setTimeout(() => {
+                document.body.removeChild(keyboardStatus);
+            }, 5000);
+        }
+        
+        function gameOver() {
+            gameStarted = false;
+            
+            document.getElementById('game-over').style.display = 'flex';
+            document.querySelector('.final-score').textContent = `Final Score: ${score}`;
+        }
+        
+        function restartGame() {
+            // Reset game state
+            health = 100;
+            score = 0;
+            
+            // Reset player position
+            yawObject.position.set(-10, 1.6, -10);
+            
+            // Clear existing enemies and projectiles
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                scene.remove(enemies[i]);
             }
-        });
-        document.addEventListener('mouseup', (event) => {
-            if (event.button === 0) {
-                mouseIsDown = false;
+            enemies = [];
+            
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                scene.remove(projectiles[i]);
             }
-        });
+            projectiles = [];
+            
+            // Reset weapons
+            weapons.blaster.ammo = weapons.blaster.maxAmmo;
+            weapons.shotgun.ammo = 0;
+            weapons.rocketLauncher.ammo = 0;
+            switchWeapon('blaster');
+            
+            // Hide game over screen
+            document.getElementById('game-over').style.display = 'none';
+            
+            // Recreate enemies
+            createEnemy(-35, -35);
+            createEnemy(35, 35);
+            createEnemy(-35, 35);
+            createEnemy(0, -35);
+            
+            // Update HUD
+            updateHUD();
+            
+            // Restart game
+            gameStarted = true;
+        }
+        
+        function displayFallbackMessage() {
+            const fallbackMsg = document.createElement('div');
+            fallbackMsg.style.position = 'absolute';
+            fallbackMsg.style.top = '70px';
+            fallbackMsg.style.left = '10px';
+            fallbackMsg.style.color = 'yellow';
+            fallbackMsg.style.backgroundColor = 'rgba(0,0,0,0.5)';
+            fallbackMsg.style.padding = '10px';
+            fallbackMsg.style.borderRadius = '5px';
+            fallbackMsg.style.zIndex = '50';
+            fallbackMsg.style.pointerEvents = 'none';
+            fallbackMsg.innerHTML = 'WASD or Arrow Keys to move | Mouse to aim | Click or SPACE to shoot | 1-3 to switch weapons';
+            document.body.appendChild(fallbackMsg);
+        }
         
         // Initialize the game
         init();
     </script>
 </body>
 </html>
+
