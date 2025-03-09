@@ -173,6 +173,7 @@
         <h1>Arena Shooter</h1>
         <p>A UT99-inspired browser shooter</p>
         <button id="start-button">Start Game</button>
+        <p><a href="instructions.html" style="color: #4CAF50; text-decoration: none; margin-top: 10px; display: inline-block;">View Instructions</a></p>
     </div>
     
     <div id="game-over">
@@ -1957,6 +1958,28 @@
             });
             
             document.body.appendChild(debugButton);
+            
+            // Also create a help button
+            const helpButton = document.createElement('button');
+            helpButton.id = 'help-button';
+            helpButton.textContent = "Help";
+            helpButton.style.position = 'absolute';
+            helpButton.style.top = '10px';
+            helpButton.style.right = '100px';
+            helpButton.style.padding = '5px 10px';
+            helpButton.style.backgroundColor = '#4CAF50';
+            helpButton.style.color = 'white';
+            helpButton.style.border = 'none';
+            helpButton.style.borderRadius = '5px';
+            helpButton.style.cursor = 'pointer';
+            helpButton.style.zIndex = '1000';
+            
+            helpButton.addEventListener('click', function() {
+                // Open instructions in a new tab
+                window.open('instructions.html', '_blank');
+            });
+            
+            document.body.appendChild(helpButton);
         }
         
         // Initialize the game

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arena Shooter - Instructions</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #222;
+            color: #eee;
+        }
+        h1, h2, h3 {
+            color: #4CAF50;
+        }
+        .section {
+            margin-bottom: 30px;
+            border-bottom: 1px solid #444;
+            padding-bottom: 20px;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 10px;
+        }
+        .key {
+            background-color: #333;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .weapon {
+            display: flex;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+        .weapon-icon {
+            width: 50px;
+            height: 50px;
+            margin-right: 15px;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+        .blaster { background-color: #00ffff; color: #000; }
+        .shotgun { background-color: #ff9900; color: #000; }
+        .rocket { background-color: #ff0000; color: #000; }
+        .enemy {
+            display: flex;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+        .enemy-icon {
+            width: 50px;
+            height: 50px;
+            margin-right: 15px;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .basic { background-color: #ff0000; }
+        .fast { background-color: #00ff00; }
+        .tank { background-color: #0000ff; }
+        .back-button {
+            display: inline-block;
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        .debug-section {
+            background-color: #333;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 5px solid #ff0000;
+        }
+    </style>
+</head>
+<body>
+    <h1>Arena Shooter - Instructions</h1>
+    
+    <div class="section">
+        <h2>How to Play</h2>
+        <ol>
+            <li>Use your mouse to aim and WASD keys to move</li>
+            <li>Collect weapon pickups to gain access to more powerful weapons</li>
+            <li>Defeat enemies to earn points</li>
+            <li>Survive as long as possible!</li>
+        </ol>
+    </div>
+    
+    <div class="section">
+        <h2>Controls</h2>
+        
+        <h3>Movement</h3>
+        <div class="controls">
+            <div><span class="key">W</span> / <span class="key">↑</span></div>
+            <div>Move forward</div>
+            
+            <div><span class="key">S</span> / <span class="key">↓</span></div>
+            <div>Move backward</div>
+            
+            <div><span class="key">A</span> / <span class="key">←</span></div>
+            <div>Strafe left</div>
+            
+            <div><span class="key">D</span> / <span class="key">→</span></div>
+            <div>Strafe right</div>
+            
+            <div><span class="key">Mouse</span></div>
+            <div>Look/aim</div>
+        </div>
+        
+        <h3>Combat</h3>
+        <div class="controls">
+            <div><span class="key">Left Click</span> / <span class="key">Space</span></div>
+            <div>Shoot</div>
+            
+            <div><span class="key">1</span></div>
+            <div>Switch to Blaster (default weapon, infinite ammo)</div>
+            
+            <div><span class="key">2</span></div>
+            <div>Switch to Shotgun (if you have ammo)</div>
+            
+            <div><span class="key">3</span></div>
+            <div>Switch to Rocket Launcher (if you have ammo)</div>
+        </div>
+        
+        <h3>Debug Mode</h3>
+        <div class="controls">
+            <div><span class="key">0</span> / <span class="key">`</span></div>
+            <div>Toggle debug mode</div>
+            
+            <div><span class="key">Debug Button</span></div>
+            <div>Click the "Debug: OFF/ON" button in the top-right corner</div>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>Weapons</h2>
+        
+        <div class="weapon">
+            <div class="weapon-icon blaster">B</div>
+            <div>
+                <h3>Basic Blaster</h3>
+                <p>Default weapon with infinite ammo. Medium damage, medium fire rate, cyan projectiles.</p>
+            </div>
+        </div>
+        
+        <div class="weapon">
+            <div class="weapon-icon shotgun">S</div>
+            <div>
+                <h3>Shotgun</h3>
+                <p>Fires multiple projectiles in a spread pattern. Medium damage per projectile, slow fire rate, orange projectiles, limited ammo.</p>
+            </div>
+        </div>
+        
+        <div class="weapon">
+            <div class="weapon-icon rocket">R</div>
+            <div>
+                <h3>Rocket Launcher</h3>
+                <p>Fires explosive projectiles that damage enemies in a radius. High damage, very slow fire rate, red projectiles, limited ammo.</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>Enemies</h2>
+        
+        <div class="enemy">
+            <div class="enemy-icon basic"></div>
+            <div>
+                <h3>Basic Enemy (Red)</h3>
+                <p>Medium health, medium speed, medium damage.</p>
+            </div>
+        </div>
+        
+        <div class="enemy">
+            <div class="enemy-icon fast"></div>
+            <div>
+                <h3>Fast Enemy (Green)</h3>
+                <p>Low health, high speed, low damage.</p>
+            </div>
+        </div>
+        
+        <div class="enemy">
+            <div class="enemy-icon tank"></div>
+            <div>
+                <h3>Tank Enemy (Blue)</h3>
+                <p>High health, low speed, high damage.</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="section debug-section">
+        <h2>Debug Mode</h2>
+        <p>Debug mode provides visual aids to help understand the game mechanics:</p>
+        <ul>
+            <li><strong>Red Line:</strong> Shows your shooting direction</li>
+            <li><strong>Colored Tracers:</strong> Shows the path of your projectiles</li>
+            <li><strong>Red Wireframe Spheres:</strong> Shows enemy hit detection radius</li>
+            <li><strong>Position Display:</strong> Shows your current coordinates in the arena</li>
+        </ul>
+    </div>
+    
+    <div class="section">
+        <h2>Tips</h2>
+        <ol>
+            <li>Keep moving to avoid enemy attacks</li>
+            <li>Use cover to protect yourself</li>
+            <li>The Rocket Launcher is effective against groups of enemies</li>
+            <li>The Shotgun is effective at close range</li>
+            <li>Collect weapon pickups as soon as they respawn</li>
+            <li>Enemies will respawn after being defeated</li>
+        </ol>
+    </div>
+    
+    <a href="index.html" class="back-button">Back to Game</a>
+</body>
+</html> 
