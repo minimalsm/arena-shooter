@@ -158,7 +158,7 @@
     </style>
 </head>
 <body>
-    <div id="version-display">v1.0.4</div>
+    <div id="version-display">v1.0.5</div>
     <div id="crosshair">+</div>
     <div id="hud">
         <div id="weapon-info">Current Weapon: Basic Blaster</div>
@@ -1222,14 +1222,14 @@
             // Calculate movement based on camera direction
             if (moveZ !== 0) {
                 // Forward/backward movement
-                newPosition.x -= Math.sin(angle) * moveZ;
-                newPosition.z -= Math.cos(angle) * moveZ;
+                newPosition.x += Math.sin(angle) * moveZ;
+                newPosition.z += Math.cos(angle) * moveZ;
             }
             
             if (moveX !== 0) {
                 // Strafe movement (left/right)
-                newPosition.x -= Math.sin(angle + Math.PI/2) * moveX;
-                newPosition.z -= Math.cos(angle + Math.PI/2) * moveX;
+                newPosition.x += Math.sin(angle + Math.PI/2) * moveX;
+                newPosition.z += Math.cos(angle + Math.PI/2) * moveX;
             }
             
             // Apply the new position
