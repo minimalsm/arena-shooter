@@ -901,11 +901,11 @@
                 projectile.position.copy(camera.position);
                 projectile.position.add(yawObject.position);
                 
-                // Get shooting direction
-                const direction = new THREE.Vector3(0, 0, -1);
-                
-                // Apply camera rotation to direction vector
-                direction.applyQuaternion(camera.quaternion);
+                // Calculate shooting direction based on camera view
+                // Create a vector pointing forward in camera space
+                const direction = new THREE.Vector3();
+                camera.getWorldDirection(direction);
+                direction.normalize();
                 
                 // Add spread for shotgun
                 if (weapon.spread) {
@@ -1056,7 +1056,7 @@
                     debugIndicator.style.borderRadius = '5px';
                     debugIndicator.style.fontWeight = 'bold';
                     debugIndicator.style.zIndex = '100';
-                    debugIndicator.textContent = 'DEBUG MODE';
+                    debugIndicator.innerHTML = 'DEBUG MODE<br><span style="font-size: 12px; font-weight: normal;">Red line shows shooting direction<br>Press ` (backtick) to toggle</span>';
                     document.body.appendChild(debugIndicator);
                 }
             } else {
@@ -1612,6 +1612,9 @@
                     currentWeaponModel.rotation.y = Math.cos(performance.now() * 0.001) * 0.05;
                 }
                 
+                // Update debug direction indicator
+                updateDebugDirectionIndicator();
+                
                 // Update player movement
                 updatePlayerMovement();
                 
@@ -1638,6 +1641,46 @@
             
             // Render
             renderer.render(scene, camera);
+        }
+        
+        // Debug direction indicator
+        let directionIndicator = null;
+        
+        function updateDebugDirectionIndicator() {
+            // Only show in debug mode
+            if (debugMode) {
+                if (!directionIndicator) {
+                    // Create a line showing the shooting direction
+                    const lineGeometry = new THREE.BufferGeometry();
+                    const lineMaterial = new THREE.LineBasicMaterial({ 
+                        color: 0xff0000,
+                        linewidth: 3
+                    });
+                    
+                    directionIndicator = new THREE.Line(lineGeometry, lineMaterial);
+                    scene.add(directionIndicator);
+                }
+                
+                // Update the line to match current camera direction
+                const startPoint = new THREE.Vector3();
+                startPoint.copy(camera.position);
+                startPoint.add(yawObject.position);
+                
+                const direction = new THREE.Vector3();
+                camera.getWorldDirection(direction);
+                
+                const endPoint = startPoint.clone().add(
+                    direction.multiplyScalar(10) // Show 10 units ahead
+                );
+                
+                const points = [startPoint, endPoint];
+                directionIndicator.geometry.dispose();
+                directionIndicator.geometry = new THREE.BufferGeometry().setFromPoints(points);
+            } else if (directionIndicator) {
+                // Remove when debug mode is off
+                scene.remove(directionIndicator);
+                directionIndicator = null;
+            }
         }
         
         // Create a position display element
