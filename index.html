@@ -158,7 +158,7 @@
     </style>
 </head>
 <body>
-    <div id="version-display">v1.0.8</div>
+    <div id="version-display">v1.1.2</div>
     <div id="crosshair">+</div>
     <div id="hud">
         <div id="weapon-info">Current Weapon: Basic Blaster</div>
@@ -172,6 +172,24 @@
     <div id="start-menu">
         <h1>Arena Shooter</h1>
         <p>A UT99-inspired browser shooter</p>
+        <div style="margin: 20px 0;">
+            <label for="ai-count">AI Players: </label>
+            <select id="ai-count" style="padding: 5px; margin-right: 15px;">
+                <option value="0">None</option>
+                <option value="1" selected>1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+            </select>
+            
+            <label for="ai-difficulty">Difficulty: </label>
+            <select id="ai-difficulty" style="padding: 5px;">
+                <option value="EASY">Easy</option>
+                <option value="MEDIUM" selected>Medium</option>
+                <option value="HARD">Hard</option>
+                <option value="INSANE">Insane</option>
+            </select>
+        </div>
         <button id="start-button">Start Game</button>
         <p><a href="instructions.html" style="color: #4CAF50; text-decoration: none; margin-top: 10px; display: inline-block;">View Instructions</a></p>
     </div>
@@ -187,7 +205,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.149.0/three.min.js"></script>
     <script>
         // Game version - increment this when making changes
-        const GAME_VERSION = "1.0.8";
+        const GAME_VERSION = "1.1.2";
         
         // Game variables
         let scene, camera, renderer;
@@ -200,6 +218,7 @@
         let pickups = [];
         let enemies = [];
         let projectiles = [];
+        let aiPlayers = []; // Array to store AI players
         let gameStarted = false;
         let frameId = null;
         let health = 100;
@@ -207,6 +226,14 @@
         let score = 0;
         let enemyTypes = ['basic', 'fast', 'tank'];
         let debugMode = false;
+        
+        // AI difficulty levels
+        const AI_DIFFICULTY = {
+            EASY: { reactionTime: 1000, accuracy: 0.5, movementRandomness: 0.7 },
+            MEDIUM: { reactionTime: 700, accuracy: 0.7, movementRandomness: 0.5 },
+            HARD: { reactionTime: 400, accuracy: 0.85, movementRandomness: 0.3 },
+            INSANE: { reactionTime: 200, accuracy: 0.95, movementRandomness: 0.1 }
+        };
         
         // Movement speed
         const MOVE_SPEED = 0.15;
@@ -380,6 +407,29 @@
             createEnemy(-35, 35);
             createEnemy(0, -35);
             
+            // Add AI players based on UI settings
+            const aiCount = parseInt(document.getElementById('ai-count').value) || 0;
+            const aiDifficulty = document.getElementById('ai-difficulty').value || 'MEDIUM';
+            
+            // Create AI players at different positions
+            const aiPositions = [
+                [30, -30],
+                [-30, 30],
+                [30, 30],
+                [-30, -30]
+            ];
+            
+            for (let i = 0; i < aiCount; i++) {
+                if (i < aiPositions.length) {
+                    createAIPlayer(
+                        aiPositions[i][0], 
+                        aiPositions[i][1], 
+                        aiDifficulty, 
+                        `Bot-${i+1}`
+                    );
+                }
+            }
+            
             // Add skybox
             const skyboxGeometry = new THREE.BoxGeometry(1000, 1000, 1000);
             const skyboxMaterials = [
@@ -518,6 +568,218 @@
             enemies.push(enemy);
             
             return enemy;
+        }
+        
+        // Create an AI player that behaves more like a human player
+        function createAIPlayer(x, z, difficulty = 'MEDIUM', name = '') {
+            // Create a group to hold all AI player components
+            const aiPlayer = new THREE.Group();
+            
+            // Create player body (more humanoid than basic enemies)
+            const bodyGeometry = new THREE.CylinderGeometry(0.4, 0.4, 1.8, 8);
+            const bodyMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x8844aa,
+                roughness: 0.7
+            });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.position.y = 0.9; // Center of body
+            aiPlayer.add(body);
+            
+            // Create head
+            const headGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+            const headMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xffcc88,
+                roughness: 0.5
+            });
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+            head.position.y = 1.9; // Top of body + head radius
+            aiPlayer.add(head);
+            
+            // Create weapon holder (right arm)
+            const armGeometry = new THREE.BoxGeometry(0.15, 0.15, 0.6);
+            const armMaterial = new THREE.MeshStandardMaterial({ color: 0x8844aa });
+            const arm = new THREE.Mesh(armGeometry, armMaterial);
+            arm.position.set(0.4, 1.5, 0);
+            arm.rotation.z = -Math.PI / 4; // Angle arm outward
+            aiPlayer.add(arm);
+            
+            // Add weapon to arm
+            const weaponGeometry = new THREE.BoxGeometry(0.1, 0.1, 0.5);
+            const weaponMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x00ffff,
+                emissive: 0x00ffff,
+                emissiveIntensity: 0.5
+            });
+            const weapon = new THREE.Mesh(weaponGeometry, weaponMaterial);
+            weapon.position.set(0, 0, -0.4); // Position at end of arm
+            arm.add(weapon);
+            
+            // Set AI player position
+            aiPlayer.position.set(x, 1.6, z); // Same height as player, exactly on ground
+            
+            // Add health bar
+            const healthBarGeometry = new THREE.PlaneGeometry(1, 0.1);
+            const healthBarMaterial = new THREE.MeshBasicMaterial({ color: 0x333333 });
+            const healthBar = new THREE.Mesh(healthBarGeometry, healthBarMaterial);
+            healthBar.position.y = 2.3; // Above head
+            aiPlayer.add(healthBar);
+            
+            const healthFillGeometry = new THREE.PlaneGeometry(1, 0.1);
+            const healthFillMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+            const healthFill = new THREE.Mesh(healthFillGeometry, healthFillMaterial);
+            healthFill.position.z = 0.01;
+            healthBar.add(healthFill);
+            
+            // Add name tag if provided
+            if (name) {
+                // Create a canvas for the name tag
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.width = 256;
+                canvas.height = 64;
+                context.font = 'Bold 32px Arial';
+                context.fillStyle = 'white';
+                context.textAlign = 'center';
+                context.fillText(name, 128, 40);
+                
+                // Create texture from canvas
+                const texture = new THREE.CanvasTexture(canvas);
+                
+                // Create name tag mesh
+                const nameTagGeometry = new THREE.PlaneGeometry(1, 0.25);
+                const nameTagMaterial = new THREE.MeshBasicMaterial({ 
+                    map: texture,
+                    transparent: true,
+                    depthTest: false
+                });
+                const nameTag = new THREE.Mesh(nameTagGeometry, nameTagMaterial);
+                nameTag.position.y = 2.5; // Above health bar
+                nameTag.rotation.x = -0.2; // Tilt slightly for better visibility
+                aiPlayer.add(nameTag);
+            }
+            
+            // Store AI data
+            aiPlayer.userData = {
+                type: 'aiPlayer',
+                health: 100,
+                maxHealth: 100,
+                speed: MOVE_SPEED * 0.8, // Slightly slower than player
+                lastShotTime: 0,
+                scoreValue: 50,
+                difficulty: AI_DIFFICULTY[difficulty] || AI_DIFFICULTY.MEDIUM,
+                name: name || `AI-${Math.floor(Math.random() * 1000)}`,
+                
+                // AI state
+                targetPosition: new THREE.Vector3(),
+                currentPath: [],
+                pathIndex: 0,
+                state: 'patrolling', // patrolling, chasing, attacking, retreating
+                lastStateChange: performance.now(),
+                lastDecisionTime: performance.now(),
+                
+                // Physics
+                velocity: new THREE.Vector3(0, 0, 0),
+                onGround: true,
+                
+                // Weapon system (similar to player)
+                weapons: {
+                    blaster: { 
+                        name: "Basic Blaster", 
+                        damage: 10, 
+                        ammo: 100, 
+                        maxAmmo: 100, 
+                        fireRate: 5, 
+                        active: true,
+                        projectileColor: 0x00ffff,
+                        projectileSize: 0.1,
+                        projectileSpeed: 1.0,
+                        projectileCount: 1
+                    },
+                    shotgun: { 
+                        name: "Shotgun", 
+                        damage: 15, 
+                        ammo: 0, 
+                        maxAmmo: 30, 
+                        fireRate: 2, 
+                        active: false,
+                        projectileColor: 0xff9900,
+                        projectileSize: 0.05,
+                        projectileSpeed: 1.2,
+                        projectileCount: 8,
+                        spread: 0.2
+                    },
+                    rocketLauncher: { 
+                        name: "Rocket Launcher", 
+                        damage: 50, 
+                        ammo: 0, 
+                        maxAmmo: 10, 
+                        fireRate: 1, 
+                        active: false,
+                        projectileColor: 0xff0000,
+                        projectileSize: 0.2,
+                        projectileSpeed: 0.8,
+                        projectileCount: 1,
+                        explosive: true,
+                        explosionRadius: 3
+                    }
+                },
+                
+                // Helper functions
+                getActiveWeapon: function() {
+                    for (const type in this.weapons) {
+                        if (this.weapons[type].active) {
+                            return this.weapons[type];
+                        }
+                    }
+                    return this.weapons.blaster;
+                },
+                
+                switchWeapon: function(weaponType) {
+                    // Only switch if we have ammo
+                    if (weaponType !== 'blaster' && this.weapons[weaponType].ammo <= 0) {
+                        return false;
+                    }
+                    
+                    for (const type in this.weapons) {
+                        this.weapons[type].active = false;
+                    }
+                    this.weapons[weaponType].active = true;
+                    
+                    // Update weapon model color
+                    const weaponMesh = arm.children[0];
+                    if (weaponMesh) {
+                        switch(weaponType) {
+                            case 'shotgun':
+                                weaponMesh.material.color.set(0xff9900);
+                                weaponMesh.material.emissive.set(0xff9900);
+                                break;
+                            case 'rocketLauncher':
+                                weaponMesh.material.color.set(0xff0000);
+                                weaponMesh.material.emissive.set(0xff0000);
+                                break;
+                            default: // blaster
+                                weaponMesh.material.color.set(0x00ffff);
+                                weaponMesh.material.emissive.set(0x00ffff);
+                                break;
+                        }
+                    }
+                    
+                    return true;
+                }
+            };
+            
+            // Store references to body parts for animation
+            aiPlayer.userData.head = head;
+            aiPlayer.userData.body = body;
+            aiPlayer.userData.arm = arm;
+            aiPlayer.userData.weapon = weapon;
+            aiPlayer.userData.healthFill = healthFill;
+            
+            // Add to scene and tracking array
+            scene.add(aiPlayer);
+            aiPlayers.push(aiPlayer);
+            
+            return aiPlayer;
         }
         
         function createParticles() {
@@ -973,7 +1235,8 @@
                     damage: weapon.damage,
                     timeCreated: now,
                     explosive: weapon.explosive || false,
-                    explosionRadius: weapon.explosionRadius || 0
+                    explosionRadius: weapon.explosionRadius || 0,
+                    source: 'player'
                 };
                 
                 // Add to scene and tracking array
@@ -1464,6 +1727,50 @@
                     continue;
                 }
                 
+                // Check for AI projectiles hitting player
+                if (projectile.userData.source === 'ai') {
+                    const distanceToPlayer = projectile.position.distanceTo(yawObject.position);
+                    const hitRadius = 0.5; // Player hit radius
+                    
+                    if (distanceToPlayer < hitRadius) {
+                        // Player hit by AI projectile
+                        health -= projectile.userData.damage;
+                        
+                        // Visual feedback for taking damage
+                        document.body.style.backgroundColor = "rgba(255,0,0,0.3)";
+                        setTimeout(() => {
+                            document.body.style.backgroundColor = "";
+                        }, 100);
+                        
+                        // Create hit effect
+                        createHitEffect(projectile.position);
+                        
+                        // Handle explosive projectiles
+                        if (projectile.userData.explosive) {
+                            createExplosion(projectile.position, projectile.userData.explosionRadius, projectile.userData.damage);
+                        }
+                        
+                        // Remove tracer if exists
+                        if (projectile.userData.tracer) {
+                            scene.remove(projectile.userData.tracer);
+                        }
+                        
+                        // Remove projectile
+                        scene.remove(projectile);
+                        projectiles.splice(i, 1);
+                        
+                        // Update health bar
+                        updateHUD();
+                        
+                        // Game over check
+                        if (health <= 0) {
+                            gameOver();
+                        }
+                        
+                        continue;
+                    }
+                }
+                
                 // Remove projectiles after 5 seconds or if they go too far
                 if (now - projectile.userData.timeCreated > 5000 || 
                     projectile.position.length() > 200) {
@@ -1523,7 +1830,7 @@
             
             // Rotate velocity based on camera rotation
             const rotatedVelocity = new THREE.Vector3(velocity.x, 0, velocity.z);
-            rotatedVelocity.applyAxisAngle(new THREE.Vector3(0, 1, 0), -yawObject.rotation.y);
+            rotatedVelocity.applyAxisAngle(new THREE.Vector3(0, 1, 0), yawObject.rotation.y);
             
             // Store current position for collision detection
             const oldPosition = {
@@ -1640,6 +1947,9 @@
             // Update enemy positions
             updateEnemies();
             
+            // Update AI players
+            updateAIPlayers(delta);
+            
             // Update projectiles
             updateProjectiles();
             
@@ -1664,6 +1974,495 @@
             
             // Render the scene
             renderer.render(scene, camera);
+        }
+        
+        // Function to update AI players
+        function updateAIPlayers(delta) {
+            for (let i = aiPlayers.length - 1; i >= 0; i--) {
+                const aiPlayer = aiPlayers[i];
+                const userData = aiPlayer.userData;
+                const now = performance.now();
+                
+                // Update health bar
+                if (userData.healthFill) {
+                    const healthPercent = userData.health / userData.maxHealth;
+                    userData.healthFill.scale.x = healthPercent;
+                    userData.healthFill.position.x = (healthPercent - 1) / 2;
+                    
+                    // Change color based on health
+                    if (healthPercent < 0.3) {
+                        userData.healthFill.material.color.set(0xff0000);
+                    } else if (healthPercent < 0.6) {
+                        userData.healthFill.material.color.set(0xffff00);
+                    } else {
+                        userData.healthFill.material.color.set(0x00ffff);
+                    }
+                }
+                
+                // Make health bar and name tag face camera
+                for (let j = 0; j < aiPlayer.children.length; j++) {
+                    const child = aiPlayer.children[j];
+                    if (child.type === 'Mesh' && (child.material.map || child.children.length > 0)) {
+                        child.lookAt(camera.position);
+                    }
+                }
+                
+                // AI decision making - change state based on conditions
+                if (now - userData.lastDecisionTime > userData.difficulty.reactionTime) {
+                    userData.lastDecisionTime = now;
+                    
+                    // Calculate distance to player
+                    const distanceToPlayer = aiPlayer.position.distanceTo(yawObject.position);
+                    
+                    // Check if AI can see player (simple line of sight check)
+                    const canSeePlayer = checkLineOfSight(aiPlayer.position, yawObject.position);
+                    
+                    // Decide what to do based on state, distance, and line of sight
+                    if (canSeePlayer) {
+                        if (distanceToPlayer < 10) {
+                            // Close range - attack or retreat based on health
+                            if (userData.health < 30) {
+                                userData.state = 'retreating';
+                            } else {
+                                userData.state = 'attacking';
+                                
+                                // Choose appropriate weapon based on distance
+                                if (distanceToPlayer < 5 && userData.weapons.shotgun.ammo > 0) {
+                                    userData.switchWeapon('shotgun');
+                                } else if (distanceToPlayer > 15 && userData.weapons.rocketLauncher.ammo > 0) {
+                                    userData.switchWeapon('rocketLauncher');
+                                } else {
+                                    userData.switchWeapon('blaster');
+                                }
+                            }
+                        } else if (distanceToPlayer < 30) {
+                            // Medium range - chase player
+                            userData.state = 'chasing';
+                        } else {
+                            // Far away - patrol or look for pickups
+                            userData.state = 'patrolling';
+                        }
+                    } else {
+                        // Can't see player - patrol or look for pickups
+                        userData.state = 'patrolling';
+                        
+                        // Occasionally change patrol target
+                        if (Math.random() < 0.3) {
+                            setRandomPatrolTarget(aiPlayer);
+                        }
+                    }
+                    
+                    // Debug state display
+                    if (debugMode) {
+                        console.log(`AI ${userData.name} state: ${userData.state}, distance: ${distanceToPlayer.toFixed(2)}, can see player: ${canSeePlayer}`);
+                    }
+                }
+                
+                // Execute behavior based on current state
+                switch (userData.state) {
+                    case 'patrolling':
+                        // Move toward patrol target
+                        if (!userData.targetPosition.x && !userData.targetPosition.z) {
+                            setRandomPatrolTarget(aiPlayer);
+                        }
+                        moveAIToTarget(aiPlayer, userData.targetPosition, delta);
+                        
+                        // Look for pickups
+                        checkAIPickupCollisions(aiPlayer);
+                        break;
+                        
+                    case 'chasing':
+                        // Move toward player
+                        moveAIToTarget(aiPlayer, yawObject.position, delta);
+                        
+                        // Look for pickups along the way
+                        checkAIPickupCollisions(aiPlayer);
+                        
+                        // Shoot occasionally while chasing
+                        if (Math.random() < 0.05 && checkLineOfSight(aiPlayer.position, yawObject.position)) {
+                            aiShoot(aiPlayer, yawObject.position);
+                        }
+                        break;
+                        
+                    case 'attacking':
+                        // Face player
+                        const directionToPlayer = new THREE.Vector3();
+                        directionToPlayer.subVectors(yawObject.position, aiPlayer.position);
+                        directionToPlayer.y = 0; // Keep on same y level
+                        
+                        // Look at player (smooth rotation)
+                        const targetRotation = Math.atan2(directionToPlayer.x, directionToPlayer.z);
+                        aiPlayer.rotation.y = targetRotation;
+                        
+                        // Aim weapon at player (adjust arm and head)
+                        if (userData.arm) {
+                            // Calculate vertical angle to player
+                            const verticalAngle = Math.atan2(directionToPlayer.y, 
+                                Math.sqrt(directionToPlayer.x * directionToPlayer.x + directionToPlayer.z * directionToPlayer.z));
+                            
+                            // Rotate arm to aim at player
+                            userData.arm.rotation.x = verticalAngle;
+                        }
+                        
+                        // Shoot at player if we have line of sight
+                        if (checkLineOfSight(aiPlayer.position, yawObject.position)) {
+                            // Add slight randomness to target position based on difficulty
+                            const targetPos = yawObject.position.clone();
+                            const accuracy = userData.difficulty.accuracy;
+                            
+                            // Add head bobbing for more realistic targeting
+                            targetPos.y += Math.sin(now * 0.003) * 0.1;
+                            
+                            // Shoot at player
+                            aiShoot(aiPlayer, targetPos);
+                        }
+                        
+                        // Occasionally strafe to avoid being an easy target
+                        if (Math.random() < 0.1) {
+                            // Strafe perpendicular to player direction
+                            const strafeDir = new THREE.Vector3(-directionToPlayer.z, 0, directionToPlayer.x);
+                            strafeDir.normalize();
+                            
+                            // Randomly choose left or right
+                            if (Math.random() < 0.5) {
+                                strafeDir.multiplyScalar(-1);
+                            }
+                            
+                            // Store current position for collision detection
+                            const oldStrafePosition = aiPlayer.position.clone();
+                            
+                            // Apply strafe movement with proper delta time scaling
+                            const strafeDeltaSeconds = delta / 1000;
+                            const strafeSpeed = MOVE_SPEED * 3.0; // Faster strafing for better evasion
+                            const strafeMoveX = strafeDir.x * strafeSpeed * strafeDeltaSeconds;
+                            const strafeMoveZ = strafeDir.z * strafeSpeed * strafeDeltaSeconds;
+                            
+                            // Apply movement with minimum threshold
+                            const minStrafeMove = 0.001;
+                            if (Math.abs(strafeMoveX) > minStrafeMove) aiPlayer.position.x += strafeMoveX;
+                            if (Math.abs(strafeMoveZ) > minStrafeMove) aiPlayer.position.z += strafeMoveZ;
+                            
+                            // Check for collisions
+                            if (checkAICollisions(aiPlayer)) {
+                                aiPlayer.position.copy(oldStrafePosition);
+                            }
+                        }
+                        break;
+                        
+                    case 'retreating':
+                        // Move away from player
+                        const retreatDir = new THREE.Vector3();
+                        retreatDir.subVectors(aiPlayer.position, yawObject.position);
+                        retreatDir.y = 0;
+                        retreatDir.normalize();
+                        
+                        // Store current position for collision detection
+                        const oldPosition = aiPlayer.position.clone();
+                        
+                        // Reset horizontal velocity
+                        userData.velocity.x = 0;
+                        userData.velocity.z = 0;
+                        
+                        // Set movement velocity based on direction - use same increased speed
+                        const retreatSpeed = MOVE_SPEED * 2.5;
+                        userData.velocity.x = retreatDir.x * retreatSpeed;
+                        userData.velocity.z = retreatDir.z * retreatSpeed;
+                        
+                        // Apply movement - properly scaled by delta time
+                        const deltaSeconds = delta / 1000;
+                        const moveX = userData.velocity.x * deltaSeconds;
+                        const moveZ = userData.velocity.z * deltaSeconds;
+                        
+                        // Apply movement with minimum threshold
+                        const minMove = 0.001;
+                        if (Math.abs(moveX) > minMove) aiPlayer.position.x += moveX;
+                        if (Math.abs(moveZ) > minMove) aiPlayer.position.z += moveZ;
+                        
+                        // Check for collisions
+                        if (checkAICollisions(aiPlayer)) {
+                            aiPlayer.position.copy(oldPosition);
+                            
+                            // Try to find a new direction
+                            setRandomPatrolTarget(aiPlayer);
+                            userData.state = 'patrolling';
+                        }
+                        
+                        // Occasionally shoot while retreating
+                        if (Math.random() < 0.03 && checkLineOfSight(aiPlayer.position, yawObject.position)) {
+                            aiShoot(aiPlayer, yawObject.position);
+                        }
+                        break;
+                }
+                
+                // Check for projectile hits on AI players
+                for (let j = projectiles.length - 1; j >= 0; j--) {
+                    const projectile = projectiles[j];
+                    
+                    // Skip AI's own projectiles
+                    if (projectile.userData.source === 'ai') continue;
+                    
+                    const distance = projectile.position.distanceTo(aiPlayer.position);
+                    
+                    // Use a reasonable hit radius
+                    const hitRadius = 1.0;
+                    
+                    if (distance < hitRadius) {
+                        // Hit an AI player
+                        userData.health -= projectile.userData.damage;
+                        
+                        // Visual feedback for hit
+                        userData.body.material.emissive = new THREE.Color(0xff0000);
+                        setTimeout(() => {
+                            userData.body.material.emissive = new THREE.Color(0x000000);
+                        }, 100);
+                        
+                        // Create hit effect
+                        createHitEffect(projectile.position);
+                        
+                        // Handle explosive projectiles
+                        if (projectile.userData.explosive) {
+                            createExplosion(projectile.position, projectile.userData.explosionRadius, projectile.userData.damage);
+                        }
+                        
+                        // Remove tracer if exists
+                        if (projectile.userData.tracer) {
+                            scene.remove(projectile.userData.tracer);
+                        }
+                        
+                        // Remove projectile
+                        scene.remove(projectile);
+                        projectiles.splice(j, 1);
+                        
+                        // Check if AI player is defeated
+                        if (userData.health <= 0) {
+                            // Add score
+                            score += userData.scoreValue;
+                            updateHUD();
+                            
+                            // Create score popup
+                            createScorePopup(aiPlayer.position, userData.scoreValue);
+                            
+                            // Remove AI player
+                            scene.remove(aiPlayer);
+                            aiPlayers.splice(i, 1);
+                            
+                            // Respawn AI player after delay
+                            setTimeout(() => {
+                                createAIPlayer(
+                                    (Math.random() - 0.5) * 80,
+                                    (Math.random() - 0.5) * 80,
+                                    'MEDIUM',
+                                    userData.name
+                                );
+                            }, 5000);
+                            
+                            break; // Break the projectile loop since AI is removed
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Helper function to check if AI can see the target (line of sight)
+        function checkLineOfSight(startPos, endPos) {
+            // Create a ray from AI to target
+            const direction = new THREE.Vector3();
+            direction.subVectors(endPos, startPos);
+            const distance = direction.length();
+            direction.normalize();
+            
+            // Create a raycaster
+            const raycaster = new THREE.Raycaster(startPos, direction, 0, distance);
+            
+            // Check for intersections with obstacles
+            const intersects = raycaster.intersectObjects(
+                obstacles.map(obstacle => obstacle.mesh),
+                false
+            );
+            
+            // If there are no intersections, we have line of sight
+            return intersects.length === 0;
+        }
+        
+        // Helper function to set a random patrol target for AI
+        function setRandomPatrolTarget(aiPlayer) {
+            // Choose a random position within the arena
+            const x = (Math.random() - 0.5) * 90;
+            const z = (Math.random() - 0.5) * 90;
+            
+            aiPlayer.userData.targetPosition.set(x, 1.6, z);
+        }
+        
+        // Helper function to move AI toward a target position
+        function moveAIToTarget(aiPlayer, targetPosition, delta) {
+            const userData = aiPlayer.userData;
+            
+            // Apply gravity - use a smaller value to prevent floating
+            userData.velocity.y -= GRAVITY * 1.5;
+            
+            // Update vertical position based on velocity
+            aiPlayer.position.y += userData.velocity.y;
+            
+            // Check if AI is on the ground - use a more precise check
+            if (aiPlayer.position.y <= 1.6) { // Same height as player
+                userData.velocity.y = 0;
+                aiPlayer.position.y = 1.6; // Force exact ground position
+                userData.onGround = true;
+            }
+            
+            // Calculate direction to target
+            const direction = new THREE.Vector3();
+            direction.subVectors(targetPosition, aiPlayer.position);
+            direction.y = 0; // Keep on same y level
+            
+            // Check if we're close enough to target
+            const distanceToTarget = direction.length();
+            if (distanceToTarget < 1) {
+                // We've reached the target
+                if (userData.state === 'patrolling') {
+                    // Set a new patrol target
+                    setRandomPatrolTarget(aiPlayer);
+                }
+                return;
+            }
+            
+            // Normalize direction
+            direction.normalize();
+            
+            // Add some randomness to movement based on difficulty
+            if (userData.difficulty.movementRandomness > 0) {
+                direction.x += (Math.random() - 0.5) * userData.difficulty.movementRandomness;
+                direction.z += (Math.random() - 0.5) * userData.difficulty.movementRandomness;
+                direction.normalize();
+            }
+            
+            // Store current position for collision detection
+            const oldPosition = aiPlayer.position.clone();
+            
+            // Reset horizontal velocity
+            userData.velocity.x = 0;
+            userData.velocity.z = 0;
+            
+            // Set movement velocity based on direction - increase base speed
+            const baseSpeed = MOVE_SPEED * 2.5; // Increase base speed
+            userData.velocity.x = direction.x * baseSpeed;
+            userData.velocity.z = direction.z * baseSpeed;
+            
+            // Apply movement - properly scaled by delta time
+            // Convert delta from milliseconds to seconds for consistent movement speed
+            const deltaSeconds = delta / 1000;
+            const moveX = userData.velocity.x * deltaSeconds;
+            const moveZ = userData.velocity.z * deltaSeconds;
+            
+            // Apply movement with a minimum threshold to ensure movement happens
+            const minMove = 0.001; // Minimum movement threshold
+            if (Math.abs(moveX) > minMove) aiPlayer.position.x += moveX;
+            if (Math.abs(moveZ) > minMove) aiPlayer.position.z += moveZ;
+            
+            // Debug movement info
+            if (debugMode) {
+                console.log(`AI movement: deltaSeconds=${deltaSeconds.toFixed(4)}, moveX=${moveX.toFixed(4)}, moveZ=${moveZ.toFixed(4)}`);
+            }
+            
+            // Rotate AI to face movement direction
+            const targetRotation = Math.atan2(direction.x, direction.z);
+            
+            // Smooth rotation
+            const rotationDiff = targetRotation - aiPlayer.rotation.y;
+            
+            // Normalize rotation difference to [-PI, PI]
+            let normalizedDiff = rotationDiff;
+            while (normalizedDiff > Math.PI) normalizedDiff -= Math.PI * 2;
+            while (normalizedDiff < -Math.PI) normalizedDiff += Math.PI * 2;
+            
+            // Apply smooth rotation
+            aiPlayer.rotation.y += normalizedDiff * 0.1;
+            
+            // Check for collisions
+            if (checkAICollisions(aiPlayer)) {
+                // Collision detected, revert position
+                aiPlayer.position.copy(oldPosition);
+                
+                // Try a different direction
+                if (Math.random() < 0.3) {
+                    setRandomPatrolTarget(aiPlayer);
+                }
+            }
+            
+            // Simple boundary checks
+            if (aiPlayer.position.x < -48) aiPlayer.position.x = -48;
+            if (aiPlayer.position.x > 48) aiPlayer.position.x = 48;
+            if (aiPlayer.position.z < -48) aiPlayer.position.z = -48;
+            if (aiPlayer.position.z > 48) aiPlayer.position.z = 48;
+        }
+        
+        // Helper function to check AI collisions with obstacles
+        function checkAICollisions(aiPlayer) {
+            // AI collision radius
+            const aiRadius = 0.5;
+            const aiPos = aiPlayer.position;
+            
+            // Check each obstacle
+            for (let i = 0; i < obstacles.length; i++) {
+                const obstacle = obstacles[i];
+                
+                // Simple box-sphere collision detection
+                // Calculate closest point on box to AI
+                const closestX = Math.max(obstacle.x - obstacle.width/2, Math.min(aiPos.x, obstacle.x + obstacle.width/2));
+                const closestY = Math.max(obstacle.y - obstacle.height/2, Math.min(aiPos.y, obstacle.y + obstacle.height/2));
+                const closestZ = Math.max(obstacle.z - obstacle.depth/2, Math.min(aiPos.z, obstacle.z + obstacle.depth/2));
+                
+                // Calculate distance from closest point to AI center
+                const distanceX = closestX - aiPos.x;
+                const distanceY = closestY - aiPos.y;
+                const distanceZ = closestZ - aiPos.z;
+                
+                const distanceSquared = distanceX * distanceX + distanceY * distanceY + distanceZ * distanceZ;
+                
+                // Check if distance is less than AI radius
+                if (distanceSquared < aiRadius * aiRadius) {
+                    return true; // Collision detected
+                }
+            }
+            
+            return false; // No collision
+        }
+        
+        // Helper function to check if AI can pick up items
+        function checkAIPickupCollisions(aiPlayer) {
+            const userData = aiPlayer.userData;
+            
+            for (let i = pickups.length - 1; i >= 0; i--) {
+                const pickup = pickups[i];
+                const distance = pickup.position.distanceTo(aiPlayer.position);
+                
+                if (distance < 2) {
+                    if (pickup.userData.type === 'weapon') {
+                        // Add ammo for weapon
+                        const weaponType = pickup.userData.weaponType;
+                        userData.weapons[weaponType].ammo = userData.weapons[weaponType].maxAmmo;
+                        
+                        // Switch to the weapon if it's better than current
+                        if (weaponType === 'rocketLauncher' || 
+                            (weaponType === 'shotgun' && userData.weapons.blaster.active)) {
+                            userData.switchWeapon(weaponType);
+                        }
+                        
+                        // Remove pickup
+                        scene.remove(pickup);
+                        pickups.splice(i, 1);
+                        
+                        // Respawn pickup after delay
+                        setTimeout(() => {
+                            const newPickup = createWeaponPickup(
+                                weaponType, 
+                                pickup.position.x, 
+                                pickup.position.z
+                            );
+                        }, 10000);
+                    }
+                }
+            }
         }
         
         // Debug direction indicator
@@ -1860,6 +2659,12 @@
             }
             projectiles = [];
             
+            // Clear existing AI players
+            for (let i = aiPlayers.length - 1; i >= 0; i--) {
+                scene.remove(aiPlayers[i]);
+            }
+            aiPlayers = [];
+            
             // Reset weapons
             weapons.blaster.ammo = weapons.blaster.maxAmmo;
             weapons.shotgun.ammo = 0;
@@ -1874,6 +2679,29 @@
             createEnemy(35, 35);
             createEnemy(-35, 35);
             createEnemy(0, -35);
+            
+            // Add AI players based on UI settings
+            const aiCount = parseInt(document.getElementById('ai-count').value) || 0;
+            const aiDifficulty = document.getElementById('ai-difficulty').value || 'MEDIUM';
+            
+            // Create AI players at different positions
+            const aiPositions = [
+                [30, -30],
+                [-30, 30],
+                [30, 30],
+                [-30, -30]
+            ];
+            
+            for (let i = 0; i < aiCount; i++) {
+                if (i < aiPositions.length) {
+                    createAIPlayer(
+                        aiPositions[i][0], 
+                        aiPositions[i][1], 
+                        aiDifficulty, 
+                        `Bot-${i+1}`
+                    );
+                }
+            }
             
             // Update HUD
             updateHUD();
@@ -1996,6 +2824,145 @@
         
         // Initialize the game
         init();
+        
+        function aiShoot(aiPlayer, targetPosition) {
+            const userData = aiPlayer.userData;
+            const weapon = userData.getActiveWeapon();
+            const now = performance.now();
+            
+            // Check fire rate and ammo
+            if (now - userData.lastShotTime < 1000 / weapon.fireRate || 
+                (weapon.name !== "Basic Blaster" && weapon.ammo <= 0)) {
+                return;
+            }
+            
+            userData.lastShotTime = now;
+            
+            // Reduce ammo (except for blaster which has infinite ammo)
+            if (weapon.name !== "Basic Blaster") {
+                weapon.ammo--;
+            }
+            
+            // Create projectiles based on weapon type
+            for (let i = 0; i < weapon.projectileCount; i++) {
+                // Create projectile
+                const projectileGeometry = new THREE.SphereGeometry(weapon.projectileSize, 8, 8);
+                const projectileMaterial = new THREE.MeshBasicMaterial({ color: weapon.projectileColor });
+                const projectile = new THREE.Mesh(projectileGeometry, projectileMaterial);
+                
+                // Position at AI weapon position
+                const weaponWorldPosition = new THREE.Vector3();
+                userData.weapon.getWorldPosition(weaponWorldPosition);
+                projectile.position.copy(weaponWorldPosition);
+                
+                // Calculate direction to target
+                const direction = new THREE.Vector3();
+                direction.subVectors(targetPosition, projectile.position);
+                direction.normalize();
+                
+                // Apply accuracy based on difficulty
+                const accuracy = userData.difficulty.accuracy;
+                if (accuracy < 1) {
+                    // Add random deviation based on accuracy
+                    const deviation = (1 - accuracy) * 0.5;
+                    direction.x += (Math.random() - 0.5) * deviation;
+                    direction.y += (Math.random() - 0.5) * deviation;
+                    direction.z += (Math.random() - 0.5) * deviation;
+                    direction.normalize();
+                }
+                
+                // Add spread for shotgun
+                if (weapon.spread) {
+                    const spread = weapon.spread;
+                    direction.x += (Math.random() - 0.5) * spread;
+                    direction.y += (Math.random() - 0.5) * spread;
+                    direction.z += (Math.random() - 0.5) * spread;
+                    direction.normalize();
+                }
+                
+                // Store projectile data
+                projectile.userData = {
+                    type: 'projectile',
+                    source: 'ai',
+                    direction: direction,
+                    speed: weapon.projectileSpeed,
+                    damage: weapon.damage,
+                    timeCreated: now,
+                    explosive: weapon.explosive || false,
+                    explosionRadius: weapon.explosionRadius || 0
+                };
+                
+                // Add to scene and tracking array
+                scene.add(projectile);
+                projectiles.push(projectile);
+                
+                // Add tracer line for debug mode
+                if (debugMode) {
+                    const tracerGeometry = new THREE.BufferGeometry();
+                    const tracerMaterial = new THREE.LineBasicMaterial({ 
+                        color: weapon.projectileColor,
+                        transparent: true,
+                        opacity: 0.5
+                    });
+                    
+                    // Create a line showing the projectile's path
+                    const startPoint = projectile.position.clone();
+                    const endPoint = startPoint.clone().add(
+                        direction.clone().multiplyScalar(50) // Show 50 units ahead
+                    );
+                    
+                    const points = [startPoint, endPoint];
+                    tracerGeometry.setFromPoints(points);
+                    
+                    const tracer = new THREE.Line(tracerGeometry, tracerMaterial);
+                    tracer.userData = { type: 'tracer', timeCreated: now };
+                    scene.add(tracer);
+                    
+                    // Store tracer reference in projectile for cleanup
+                    projectile.userData.tracer = tracer;
+                }
+            }
+            
+            // Create muzzle flash effect for AI
+            createAIMuzzleFlash(aiPlayer);
+        }
+        
+        function createAIMuzzleFlash(aiPlayer) {
+            const userData = aiPlayer.userData;
+            
+            // Create a point light for muzzle flash
+            const muzzleLight = new THREE.PointLight(0xffff00, 3, 2);
+            
+            // Position the light at the end of the weapon
+            const weaponWorldPosition = new THREE.Vector3();
+            userData.weapon.getWorldPosition(weaponWorldPosition);
+            muzzleLight.position.copy(weaponWorldPosition);
+            
+            // Add to scene
+            scene.add(muzzleLight);
+            
+            // Remove the light after a short delay
+            setTimeout(() => {
+                scene.remove(muzzleLight);
+            }, 50);
+            
+            // Also add a visual flash effect
+            const flashGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+            const flashMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xffff00,
+                transparent: true,
+                opacity: 0.8
+            });
+            const flashMesh = new THREE.Mesh(flashGeometry, flashMaterial);
+            flashMesh.position.copy(weaponWorldPosition);
+            
+            scene.add(flashMesh);
+            
+            // Animate and remove the flash
+            setTimeout(() => {
+                scene.remove(flashMesh);
+            }, 50);
+        }
     </script>
 </body>
 </html>
