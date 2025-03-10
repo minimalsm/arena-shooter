@@ -159,14 +159,14 @@
 </head>
 <body>
     <div id="version-display">v1.1.2</div>
-    <div id="crosshair">+</div>
-    <div id="hud">
+    <div id="crosshair" style="display: none;">+</div>
+    <div id="hud" style="display: none;">
         <div id="weapon-info">Current Weapon: Basic Blaster</div>
         <div id="pickup-info"></div>
     </div>
-    <div id="health-bar"><div id="health-fill"></div></div>
-    <div id="ammo">Ammo: 100</div>
-    <div id="score">Score: 0</div>
+    <div id="health-bar" style="display: none;"><div id="health-fill"></div></div>
+    <div id="ammo" style="display: none;">Ammo: 100</div>
+    <div id="score" style="display: none;">Score: 0</div>
     <div id="instructions">WASD to move | SPACE to jump | Move mouse to aim | Click to shoot | 1-3 to switch weapons | 0 to toggle debug</div>
     
     <div id="start-menu">
@@ -284,6 +284,19 @@
                 projectileCount: 1,
                 explosive: true,
                 explosionRadius: 3
+            },
+            sniper: { 
+                name: "Sniper Rifle", 
+                damage: 100, 
+                ammo: 0, 
+                maxAmmo: 15, 
+                fireRate: 0.5, 
+                active: false,
+                projectileColor: 0x9900ff,
+                projectileSize: 0.05,
+                projectileSpeed: 2.0,
+                projectileCount: 1,
+                piercing: true
             }
         };
         
@@ -295,6 +308,9 @@
         let currentYaw = 0;
         let currentPitch = 0;
         let mouseSensitivity = 0.002;
+        let isZoomed = false;
+        let normalFOV = 75;
+        let zoomedFOV = 15; // Increased zoom (smaller FOV value)
         
         // Weapon models
         let weaponModels = {};
@@ -480,13 +496,16 @@
             let color;
             switch(type) {
                 case 'shotgun':
-                    color = 0xff0000;
+                    color = 0xff9900;
                     break;
                 case 'rocketLauncher':
-                    color = 0x0000ff;
+                    color = 0xff0000;
+                    break;
+                case 'sniper':
+                    color = 0x9900ff;
                     break;
                 default:
-                    color = 0x00ff00;
+                    color = 0x00ffff;
             }
             
             const material = new THREE.MeshStandardMaterial({ 
@@ -721,6 +740,19 @@
                         projectileCount: 1,
                         explosive: true,
                         explosionRadius: 3
+                    },
+                    sniper: { 
+                        name: "Sniper Rifle", 
+                        damage: 100, 
+                        ammo: 0, 
+                        maxAmmo: 15, 
+                        fireRate: 0.5, 
+                        active: false,
+                        projectileColor: 0x9900ff,
+                        projectileSize: 0.05,
+                        projectileSpeed: 2.0,
+                        projectileCount: 1,
+                        piercing: true
                     }
                 },
                 
@@ -756,6 +788,10 @@
                             case 'rocketLauncher':
                                 weaponMesh.material.color.set(0xff0000);
                                 weaponMesh.material.emissive.set(0xff0000);
+                                break;
+                            case 'sniper':
+                                weaponMesh.material.color.set(0x9900ff);
+                                weaponMesh.material.emissive.set(0x9900ff);
                                 break;
                             default: // blaster
                                 weaponMesh.material.color.set(0x00ffff);
@@ -891,6 +927,9 @@
                     case 51: // 3
                         if (weapons.rocketLauncher.ammo > 0) switchWeapon('rocketLauncher');
                         break;
+                    case 52: // 4
+                        if (weapons.sniper.ammo > 0) switchWeapon('sniper');
+                        break;
                     case 32: // Space
                         console.log("Space pressed");
                         if (canJump) {
@@ -990,12 +1029,21 @@
                     case '3':
                         if (isDown && weapons.rocketLauncher.ammo > 0) switchWeapon('rocketLauncher');
                         break;
+                    case '4':
+                        if (isDown && weapons.sniper.ammo > 0) switchWeapon('sniper');
+                        break;
                     case ' ':
                         if (isDown) shoot();
                         break;
                     case '`':
                     case '0':
                         if (isDown) toggleDebugMode();
+                        break;
+                    case 'shift':
+                        // Toggle zoom when using sniper rifle
+                        if (isDown && getActiveWeaponType() === 'sniper') {
+                            toggleZoom();
+                        }
                         break;
                 }
             }
@@ -1050,6 +1098,11 @@
                 weapons[type].active = false;
             }
             weapons[weaponType].active = true;
+            
+            // If switching away from sniper, reset zoom
+            if (isZoomed && weaponType !== 'sniper') {
+                toggleZoom(false);
+            }
             
             // Update visible weapon model
             updateWeaponModel(weaponType);
@@ -1172,6 +1225,45 @@
             weaponModels.rocketLauncher.visible = false;
             weaponContainer.add(weaponModels.rocketLauncher);
             
+            // Create sniper rifle model
+            const sniperGeometry = new THREE.BoxGeometry(0.05, 0.08, 0.6);
+            const sniperMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x9900ff,
+                emissive: 0x9900ff,
+                emissiveIntensity: 0.5
+            });
+            
+            weaponModels.sniper = new THREE.Group();
+            
+            const sniperBody = new THREE.Mesh(sniperGeometry, sniperMaterial);
+            weaponModels.sniper.add(sniperBody);
+            
+            // Add scope
+            const scopeGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.1, 8);
+            const scopeMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x333333,
+                roughness: 0.2
+            });
+            const scope = new THREE.Mesh(scopeGeometry, scopeMaterial);
+            scope.rotation.x = Math.PI / 2;
+            scope.position.set(0, 0.06, -0.1);
+            weaponModels.sniper.add(scope);
+            
+            // Add laser sight
+            const laserGeometry = new THREE.BoxGeometry(0.01, 0.01, 0.05);
+            const laserMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xff0000,
+                emissive: 0xff0000,
+                emissiveIntensity: 1.0
+            });
+            const laser = new THREE.Mesh(laserGeometry, laserMaterial);
+            laser.position.set(0, -0.03, -0.3);
+            weaponModels.sniper.add(laser);
+            
+            weaponModels.sniper.position.set(0, 0, 0);
+            weaponModels.sniper.visible = false;
+            weaponContainer.add(weaponModels.sniper);
+            
             // Set initial weapon model
             updateWeaponModel('blaster');
         }
@@ -1227,7 +1319,7 @@
                     direction.normalize();
                 }
                 
-                // Store projectile data
+                // Set projectile properties
                 projectile.userData = {
                     type: 'projectile',
                     direction: direction,
@@ -1236,12 +1328,72 @@
                     timeCreated: now,
                     explosive: weapon.explosive || false,
                     explosionRadius: weapon.explosionRadius || 0,
+                    piercing: weapon.piercing || false,
                     source: 'player'
                 };
                 
                 // Add to scene and tracking array
                 scene.add(projectile);
                 projectiles.push(projectile);
+                
+                // Add special tracer effect for sniper rifle
+                if (weapon.name === "Sniper Rifle") {
+                    // Create a bright line tracer that fades out
+                    const tracerGeometry = new THREE.BufferGeometry();
+                    const tracerMaterial = new THREE.LineBasicMaterial({ 
+                        color: weapon.projectileColor,
+                        transparent: true,
+                        opacity: 0.8,
+                        linewidth: 2
+                    });
+                    
+                    // Create a line showing the projectile's path
+                    const startPoint = projectile.position.clone();
+                    const endPoint = startPoint.clone().add(
+                        direction.clone().multiplyScalar(200) // Show 200 units ahead for sniper
+                    );
+                    
+                    const points = [startPoint, endPoint];
+                    tracerGeometry.setFromPoints(points);
+                    
+                    const tracer = new THREE.Line(tracerGeometry, tracerMaterial);
+                    scene.add(tracer);
+                    
+                    // Fade out the tracer
+                    let opacity = 0.8;
+                    const fadeInterval = setInterval(() => {
+                        opacity -= 0.1;
+                        tracerMaterial.opacity = opacity;
+                        
+                        if (opacity <= 0) {
+                            clearInterval(fadeInterval);
+                            scene.remove(tracer);
+                        }
+                    }, 50);
+                    
+                    // Add a bright flash at the end of the tracer
+                    const impactGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+                    const impactMaterial = new THREE.MeshBasicMaterial({ 
+                        color: 0xffffff,
+                        transparent: true,
+                        opacity: 1
+                    });
+                    const impact = new THREE.Mesh(impactGeometry, impactMaterial);
+                    impact.position.copy(endPoint);
+                    scene.add(impact);
+                    
+                    // Fade out the impact
+                    let impactOpacity = 1;
+                    const impactFadeInterval = setInterval(() => {
+                        impactOpacity -= 0.1;
+                        impactMaterial.opacity = impactOpacity;
+                        
+                        if (impactOpacity <= 0) {
+                            clearInterval(impactFadeInterval);
+                            scene.remove(impact);
+                        }
+                    }, 50);
+                }
                 
                 // Add tracer line for debug mode
                 if (debugMode) {
@@ -1273,6 +1425,20 @@
             // Add muzzle flash effect
             createMuzzleFlash();
             
+            // Add recoil effect for sniper
+            if (weapon.name === "Sniper Rifle") {
+                // Apply stronger recoil when zoomed
+                const recoilAmount = isZoomed ? 0.05 : 0.02;
+                targetPitch += recoilAmount;
+                
+                // Screen shake effect
+                if (isZoomed) {
+                    const shakeAmount = 0.003;
+                    targetYaw += (Math.random() - 0.5) * shakeAmount;
+                    targetPitch += (Math.random() - 0.5) * shakeAmount;
+                }
+            }
+            
             // Update HUD
             updateHUD();
         }
@@ -1293,6 +1459,8 @@
                     muzzleLight.position.set(0.3, -0.3, -0.9);
                 } else if (weaponType === 'rocketLauncher') {
                     muzzleLight.position.set(0.3, -0.3, -0.9);
+                } else if (weaponType === 'sniper') {
+                    muzzleLight.position.set(0.3, -0.3, -1.1);
                 }
             } else {
                 muzzleLight.position.copy(camera.position);
@@ -1325,6 +1493,8 @@
                     flashMesh.position.set(0.3, -0.3, -0.9);
                 } else if (weaponType === 'rocketLauncher') {
                     flashMesh.position.set(0.3, -0.3, -0.9);
+                } else if (weaponType === 'sniper') {
+                    flashMesh.position.set(0.3, -0.3, -1.1);
                 }
             }
             
@@ -1352,6 +1522,31 @@
             document.getElementById('ammo').textContent = `Ammo: ${weapon.name === "Basic Blaster" ? "∞" : weapon.ammo}`;
             document.getElementById('health-fill').style.width = `${health}%`;
             document.getElementById('score').textContent = `Score: ${score}`;
+            
+            // Show zoom indicator when zoomed with sniper
+            if (isZoomed && getActiveWeaponType() === 'sniper') {
+                if (!document.getElementById('zoom-indicator')) {
+                    const zoomIndicator = document.createElement('div');
+                    zoomIndicator.id = 'zoom-indicator';
+                    zoomIndicator.style.position = 'absolute';
+                    zoomIndicator.style.top = '100px';
+                    zoomIndicator.style.left = '50%';
+                    zoomIndicator.style.transform = 'translateX(-50%)';
+                    zoomIndicator.style.color = '#9900ff';
+                    zoomIndicator.style.backgroundColor = 'rgba(0,0,0,0.5)';
+                    zoomIndicator.style.padding = '5px 10px';
+                    zoomIndicator.style.borderRadius = '5px';
+                    zoomIndicator.style.fontWeight = 'bold';
+                    zoomIndicator.style.zIndex = '100';
+                    zoomIndicator.textContent = 'ZOOM ACTIVE';
+                    document.body.appendChild(zoomIndicator);
+                }
+            } else {
+                const zoomIndicator = document.getElementById('zoom-indicator');
+                if (zoomIndicator) {
+                    document.body.removeChild(zoomIndicator);
+                }
+            }
             
             // Update debug mode indicator
             if (debugMode) {
@@ -1543,9 +1738,19 @@
                             scene.remove(projectile.userData.tracer);
                         }
                         
-                        // Remove projectile
-                        scene.remove(projectile);
-                        projectiles.splice(j, 1);
+                        // For piercing projectiles (sniper), don't remove the projectile
+                        let removeProjectile = true;
+                        if (projectile.userData.piercing) {
+                            removeProjectile = false;
+                            // Reduce damage for subsequent hits
+                            projectile.userData.damage *= 0.7;
+                        }
+                        
+                        // Remove projectile if not piercing
+                        if (removeProjectile) {
+                            scene.remove(projectile);
+                            projectiles.splice(j, 1);
+                        }
                         
                         // Check if enemy is defeated
                         if (enemy.userData.health <= 0) {
@@ -1916,63 +2121,61 @@
         }
         
         function animate() {
-            if (!gameStarted) return;
-            
             frameId = requestAnimationFrame(animate);
             
-            const time = performance.now() / 1000;
-            const delta = (time - prevTime) * 1000;
-            prevTime = time;
-            
-            // Smoothly interpolate camera rotation to target rotation
-            currentYaw += (targetYaw - currentYaw) * 0.2;
-            currentPitch += (targetPitch - currentPitch) * 0.2;
-            
-            // Apply rotation to camera
-            yawObject.rotation.y = currentYaw;
-            pitchObject.rotation.x = currentPitch;
-            
-            // Add slight weapon sway based on movement
-            if (currentWeaponModel) {
-                currentWeaponModel.rotation.x = Math.sin(performance.now() * 0.002) * 0.05;
-                currentWeaponModel.rotation.y = Math.cos(performance.now() * 0.001) * 0.05;
+            // Only update game logic if game is started
+            if (gameStarted) {
+                const time = performance.now() / 1000;
+                const delta = (time - prevTime) * 1000;
+                prevTime = time;
+                
+                // Smoothly interpolate camera rotation to target rotation
+                currentYaw += (targetYaw - currentYaw) * 0.2;
+                currentPitch += (targetPitch - currentPitch) * 0.2;
+                
+                // Apply rotation to camera
+                yawObject.rotation.y = currentYaw;
+                pitchObject.rotation.x = currentPitch;
+                
+                // Add slight weapon sway based on movement
+                if (currentWeaponModel) {
+                    currentWeaponModel.rotation.x = Math.sin(performance.now() * 0.002) * 0.05;
+                    currentWeaponModel.rotation.y = Math.cos(performance.now() * 0.001) * 0.05;
+                }
+                
+                // Update debug direction indicator
+                updateDebugDirectionIndicator();
+                
+                // Update player movement
+                updatePlayerMovement(delta);
+                
+                // Check for collisions with pickups
+                checkPickupCollisions();
+                
+                // Update enemies
+                updateEnemies();
+                
+                // Update AI players
+                updateAIPlayers(delta);
+                
+                // Update projectiles
+                updateProjectiles();
+                
+                // Animate pickups
+                animatePickups();
+                
+                // Update position display in debug mode
+                if (debugMode) {
+                    updatePositionDisplay();
+                }
+                
+                // Auto-fire if mouse is held down
+                if (mouseIsDown) {
+                    shoot();
+                }
             }
             
-            // Update debug direction indicator
-            updateDebugDirectionIndicator();
-            
-            // Update player movement
-            updatePlayerMovement(delta);
-            
-            // Update enemy positions
-            updateEnemies();
-            
-            // Update AI players
-            updateAIPlayers(delta);
-            
-            // Update projectiles
-            updateProjectiles();
-            
-            // Check for pickups
-            checkPickupCollisions();
-            
-            // Auto-shoot if holding mouse button
-            if (mouseIsDown) {
-                shoot();
-            }
-            
-            // Update position display
-            updatePositionDisplay();
-            
-            // Update debug info if enabled
-            if (debugMode) {
-                updateDebugInfo();
-            }
-            
-            // Animate pickups
-            animatePickups();
-            
-            // Render the scene
+            // Always render the scene
             renderer.render(scene, camera);
         }
         
@@ -2533,9 +2736,34 @@
         }
         
         function startGame() {
-            console.log("Starting game");
             gameStarted = true;
+            
+            // Hide start screen
             document.getElementById('start-menu').style.display = 'none';
+            
+            // Show HUD and game elements
+            document.getElementById('hud').style.display = 'block';
+            document.getElementById('health-bar').style.display = 'block';
+            document.getElementById('ammo').style.display = 'block';
+            document.getElementById('score').style.display = 'block';
+            document.getElementById('crosshair').style.display = 'block';
+            
+            // Create initial enemies
+            createEnemy(-35, -35);
+            createEnemy(35, 35);
+            createEnemy(-35, 35);
+            createEnemy(0, -35);
+            
+            // Create weapon pickups
+            createWeaponPickup('shotgun', 15, 15);
+            createWeaponPickup('rocketLauncher', -15, -15);
+            createWeaponPickup('sniper', 15, -15);
+            
+            // Create health pickups
+            createHealthPickup(-15, 15);
+            
+            // Start periodic pickup spawning
+            setInterval(spawnRandomPickup, 30000); // Spawn a random pickup every 30 seconds
             
             // Set initial target rotations
             targetYaw = 0;
@@ -2669,6 +2897,7 @@
             weapons.blaster.ammo = weapons.blaster.maxAmmo;
             weapons.shotgun.ammo = 0;
             weapons.rocketLauncher.ammo = 0;
+            weapons.sniper.ammo = 0;
             switchWeapon('blaster');
             
             // Hide game over screen
@@ -2763,6 +2992,55 @@
             }, 50);
         }
         
+        function spawnRandomPickup() {
+            if (!gameStarted) return;
+            
+            // Choose a random position away from the player
+            let x, z;
+            do {
+                x = (Math.random() - 0.5) * 80;
+                z = (Math.random() - 0.5) * 80;
+            } while (Math.sqrt(Math.pow(x - yawObject.position.x, 2) + Math.pow(z - yawObject.position.z, 2)) < 20);
+            
+            // Choose a random pickup type
+            const pickupTypes = ['health', 'shotgun', 'rocketLauncher', 'sniper'];
+            const type = pickupTypes[Math.floor(Math.random() * pickupTypes.length)];
+            
+            // Create the pickup
+            if (type === 'health') {
+                createHealthPickup(x, z);
+            } else {
+                createWeaponPickup(type, x, z);
+            }
+            
+            // Create a visual effect to highlight the new pickup
+            const highlightGeometry = new THREE.RingGeometry(1, 1.2, 16);
+            const highlightMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide
+            });
+            const highlight = new THREE.Mesh(highlightGeometry, highlightMaterial);
+            highlight.position.set(x, 0.1, z);
+            highlight.rotation.x = -Math.PI / 2; // Lay flat on the ground
+            scene.add(highlight);
+            
+            // Animate the highlight
+            let scale = 0;
+            const maxScale = 5;
+            const scaleInterval = setInterval(() => {
+                scale += 0.2;
+                highlight.scale.set(scale, scale, 1);
+                highlight.material.opacity = 0.8 * (1 - scale / maxScale);
+                
+                if (scale >= maxScale) {
+                    clearInterval(scaleInterval);
+                    scene.remove(highlight);
+                }
+            }, 16);
+        }
+        
         // Function to toggle debug mode
         function toggleDebugMode() {
             debugMode = !debugMode;
@@ -2824,6 +3102,10 @@
         
         // Initialize the game
         init();
+        
+        // Start the animation loop immediately
+        prevTime = performance.now() / 1000;
+        animate();
         
         function aiShoot(aiPlayer, targetPosition) {
             const userData = aiPlayer.userData;
@@ -2962,6 +3244,131 @@
             setTimeout(() => {
                 scene.remove(flashMesh);
             }, 50);
+        }
+        
+        function toggleZoom(forceState) {
+            // If forceState is provided, set zoom to that state
+            if (forceState !== undefined) {
+                isZoomed = forceState;
+            } else {
+                // Otherwise toggle current state
+                isZoomed = !isZoomed;
+            }
+            
+            // Apply zoom effect by changing FOV
+            if (isZoomed) {
+                // Reduce mouse sensitivity when zoomed
+                mouseSensitivity = 0.0008;
+                // Animate FOV change
+                animateFOV(normalFOV, zoomedFOV);
+                
+                // Add a scope overlay
+                if (!document.getElementById('scope-overlay')) {
+                    const scopeOverlay = document.createElement('div');
+                    scopeOverlay.id = 'scope-overlay';
+                    scopeOverlay.style.position = 'absolute';
+                    scopeOverlay.style.top = '0';
+                    scopeOverlay.style.left = '0';
+                    scopeOverlay.style.width = '100%';
+                    scopeOverlay.style.height = '100%';
+                    scopeOverlay.style.pointerEvents = 'none';
+                    scopeOverlay.style.zIndex = '50';
+                    scopeOverlay.style.opacity = '0';
+                    scopeOverlay.style.transition = 'opacity 0.2s ease-in-out';
+                    
+                    // Create a better circular scope effect
+                    const scopeSize = Math.min(window.innerWidth, window.innerHeight) * 0.4; // 40% of the smaller screen dimension
+                    
+                    scopeOverlay.innerHTML = `
+                        <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7);">
+                            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: ${scopeSize}px; height: ${scopeSize}px; border-radius: 50%; background-color: transparent; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7);">
+                                <!-- Crosshair -->
+                                <div style="position: absolute; top: 50%; left: 0; width: 100%; height: 2px; background-color: rgba(153, 0, 255, 0.7);"></div>
+                                <div style="position: absolute; top: 0; left: 50%; width: 2px; height: 100%; background-color: rgba(153, 0, 255, 0.7);"></div>
+                                <div style="position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background-color: rgba(153, 0, 255, 0.9); border-radius: 50%; transform: translate(-50%, -50%);"></div>
+                                
+                                <!-- Scope rings -->
+                                <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 2px solid rgba(153, 0, 255, 0.5); border-radius: 50%;"></div>
+                                <div style="position: absolute; top: 5px; left: 5px; width: calc(100% - 10px); height: calc(100% - 10px); border: 1px solid rgba(153, 0, 255, 0.3); border-radius: 50%;"></div>
+                                
+                                <!-- Range markers -->
+                                <div style="position: absolute; top: 25%; left: 50%; width: 10px; height: 2px; background-color: rgba(153, 0, 255, 0.5); transform: translateX(-50%);"></div>
+                                <div style="position: absolute; top: 75%; left: 50%; width: 10px; height: 2px; background-color: rgba(153, 0, 255, 0.5); transform: translateX(-50%);"></div>
+                                <div style="position: absolute; top: 50%; left: 25%; width: 2px; height: 10px; background-color: rgba(153, 0, 255, 0.5); transform: translateY(-50%);"></div>
+                                <div style="position: absolute; top: 50%; left: 75%; width: 2px; height: 10px; background-color: rgba(153, 0, 255, 0.5); transform: translateY(-50%);"></div>
+                                
+                                <!-- Subtle vignette effect -->
+                                <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 50%; 
+                                     box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.5); pointer-events: none;"></div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    document.body.appendChild(scopeOverlay);
+                    
+                    // Trigger animation after a small delay
+                    setTimeout(() => {
+                        scopeOverlay.style.opacity = '1';
+                    }, 10);
+                }
+                
+                // Hide weapon model when zoomed
+                if (currentWeaponModel) {
+                    currentWeaponModel.visible = false;
+                }
+            } else {
+                // Reset mouse sensitivity
+                mouseSensitivity = 0.002;
+                // Animate FOV change back
+                animateFOV(zoomedFOV, normalFOV);
+                
+                // Remove scope overlay
+                const scopeOverlay = document.getElementById('scope-overlay');
+                if (scopeOverlay) {
+                    // Fade out
+                    scopeOverlay.style.opacity = '0';
+                    
+                    // Remove after animation completes
+                    setTimeout(() => {
+                        document.body.removeChild(scopeOverlay);
+                    }, 200);
+                }
+                
+                // Show weapon model again
+                if (currentWeaponModel) {
+                    currentWeaponModel.visible = true;
+                }
+            }
+            
+            // Update HUD to show zoom status
+            updateHUD();
+        }
+        
+        function animateFOV(startFOV, endFOV) {
+            const duration = 200; // milliseconds
+            const startTime = performance.now();
+            
+            function updateFOV() {
+                const elapsed = performance.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // Use easing function for smooth transition
+                const easeProgress = 1 - Math.pow(1 - progress, 3);
+                
+                // Calculate current FOV
+                const currentFOV = startFOV + (endFOV - startFOV) * easeProgress;
+                
+                // Apply to camera
+                camera.fov = currentFOV;
+                camera.updateProjectionMatrix();
+                
+                // Continue animation if not complete
+                if (progress < 1) {
+                    requestAnimationFrame(updateFOV);
+                }
+            }
+            
+            updateFOV();
         }
     </script>
 </body>

@@ -53,6 +53,7 @@
         .blaster { background-color: #00ffff; color: #000; }
         .shotgun { background-color: #ff9900; color: #000; }
         .rocket { background-color: #ff0000; color: #000; }
+        .sniper { background-color: #9900ff; color: #fff; }
         .enemy {
             display: flex;
             margin-bottom: 20px;
@@ -126,14 +127,11 @@
             <div><span class="key">Left Click</span> / <span class="key">Space</span></div>
             <div>Shoot</div>
             
-            <div><span class="key">1</span></div>
-            <div>Switch to Blaster (default weapon, infinite ammo)</div>
+            <div><span class="key">1</span> <span class="key">2</span> <span class="key">3</span> <span class="key">4</span></div>
+            <div>Switch weapons (1: Blaster, 2: Shotgun, 3: Rocket Launcher, 4: Sniper Rifle)</div>
             
-            <div><span class="key">2</span></div>
-            <div>Switch to Shotgun (if you have ammo)</div>
-            
-            <div><span class="key">3</span></div>
-            <div>Switch to Rocket Launcher (if you have ammo)</div>
+            <div><span class="key">SHIFT</span></div>
+            <div>Toggle zoom mode when using Sniper Rifle</div>
         </div>
         
         <h3>Debug Mode</h3>
@@ -170,6 +168,15 @@
             <div>
                 <h3>Rocket Launcher</h3>
                 <p>Fires explosive projectiles that damage enemies in a radius. High damage, very slow fire rate, red projectiles, limited ammo.</p>
+            </div>
+        </div>
+        
+        <div class="weapon">
+            <div class="weapon-icon sniper">S</div>
+            <div>
+                <h3>Sniper Rifle</h3>
+                <p>High-powered precision weapon with piercing shots that can hit multiple enemies. Very high damage, extremely slow fire rate, purple projectiles, limited ammo.</p>
+                <p><strong>Special Feature:</strong> Press SHIFT to toggle zoom mode for precision aiming.</p>
             </div>
         </div>
     </div>
