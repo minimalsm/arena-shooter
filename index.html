@@ -158,7 +158,7 @@
     </style>
 </head>
 <body>
-    <div id="version-display">v1.1.2</div>
+    <div id="version-display">v1.1.3</div>
     <div id="crosshair" style="display: none;">+</div>
     <div id="hud" style="display: none;">
         <div id="weapon-info">Current Weapon: Basic Blaster</div>
@@ -205,7 +205,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.149.0/three.min.js"></script>
     <script>
         // Game version - increment this when making changes
-        const GAME_VERSION = "1.1.2";
+        const GAME_VERSION = "1.1.3";
         
         // Game variables
         let scene, camera, renderer;
@@ -427,23 +427,15 @@
             const aiCount = parseInt(document.getElementById('ai-count').value) || 0;
             const aiDifficulty = document.getElementById('ai-difficulty').value || 'MEDIUM';
             
-            // Create AI players at different positions
-            const aiPositions = [
-                [30, -30],
-                [-30, 30],
-                [30, 30],
-                [-30, -30]
-            ];
-            
+            // Create AI players at safe positions
             for (let i = 0; i < aiCount; i++) {
-                if (i < aiPositions.length) {
-                    createAIPlayer(
-                        aiPositions[i][0], 
-                        aiPositions[i][1], 
-                        aiDifficulty, 
-                        `Bot-${i+1}`
-                    );
-                }
+                const safePosition = findSafeSpawnPosition();
+                createAIPlayer(
+                    safePosition.x,
+                    safePosition.z,
+                    aiDifficulty,
+                    `Bot-${i+1}`
+                );
             }
             
             // Add skybox
@@ -2345,9 +2337,22 @@
                             if (Math.abs(strafeMoveX) > minStrafeMove) aiPlayer.position.x += strafeMoveX;
                             if (Math.abs(strafeMoveZ) > minStrafeMove) aiPlayer.position.z += strafeMoveZ;
                             
-                            // Check for collisions
+                            // Check for collisions with improved handling
                             if (checkAICollisions(aiPlayer)) {
-                                aiPlayer.position.copy(oldStrafePosition);
+                                // First, try just X movement
+                                aiPlayer.position.x = oldStrafePosition.x;
+                                aiPlayer.position.z += strafeMoveZ;
+                                
+                                if (checkAICollisions(aiPlayer)) {
+                                    // Z movement caused collision, revert Z and try just X
+                                    aiPlayer.position.z = oldStrafePosition.z;
+                                    aiPlayer.position.x = oldStrafePosition.x + strafeMoveX;
+                                    
+                                    // If still colliding, revert to old position completely
+                                    if (checkAICollisions(aiPlayer)) {
+                                        aiPlayer.position.copy(oldStrafePosition);
+                                    }
+                                }
                             }
                         }
                         break;
@@ -2381,14 +2386,33 @@
                         if (Math.abs(moveX) > minMove) aiPlayer.position.x += moveX;
                         if (Math.abs(moveZ) > minMove) aiPlayer.position.z += moveZ;
                         
-                        // Check for collisions
+                        // Check for collisions with improved handling
                         if (checkAICollisions(aiPlayer)) {
-                            aiPlayer.position.copy(oldPosition);
+                            // First, try just X movement (similar to player collision handling)
+                            aiPlayer.position.x = oldPosition.x;
+                            aiPlayer.position.z += moveZ;
                             
-                            // Try to find a new direction
-                            setRandomPatrolTarget(aiPlayer);
-                            userData.state = 'patrolling';
+                            if (checkAICollisions(aiPlayer)) {
+                                // Z movement caused collision, revert Z and try just X
+                                aiPlayer.position.z = oldPosition.z;
+                                aiPlayer.position.x = oldPosition.x + moveX;
+                                
+                                // If still colliding, revert to old position completely
+                                if (checkAICollisions(aiPlayer)) {
+                                    aiPlayer.position.copy(oldPosition);
+                                    
+                                    // Always try a different direction when fully stuck
+                                    setRandomPatrolTarget(aiPlayer);
+                                    userData.state = 'patrolling';
+                                }
+                            }
                         }
+                        
+                        // Simple boundary checks
+                        if (aiPlayer.position.x < -48) aiPlayer.position.x = -48;
+                        if (aiPlayer.position.x > 48) aiPlayer.position.x = 48;
+                        if (aiPlayer.position.z < -48) aiPlayer.position.z = -48;
+                        if (aiPlayer.position.z > 48) aiPlayer.position.z = 48;
                         
                         // Occasionally shoot while retreating
                         if (Math.random() < 0.03 && checkLineOfSight(aiPlayer.position, yawObject.position)) {
@@ -2451,9 +2475,10 @@
                             
                             // Respawn AI player after delay
                             setTimeout(() => {
+                                const safePosition = findSafeSpawnPosition();
                                 createAIPlayer(
-                                    (Math.random() - 0.5) * 80,
-                                    (Math.random() - 0.5) * 80,
+                                    safePosition.x,
+                                    safePosition.z,
                                     'MEDIUM',
                                     userData.name
                                 );
@@ -2567,6 +2592,27 @@
                 console.log(`AI movement: deltaSeconds=${deltaSeconds.toFixed(4)}, moveX=${moveX.toFixed(4)}, moveZ=${moveZ.toFixed(4)}`);
             }
             
+            // Check for collisions with improved handling
+            if (checkAICollisions(aiPlayer)) {
+                // First, try just X movement (similar to player collision handling)
+                aiPlayer.position.x = oldPosition.x;
+                aiPlayer.position.z += moveZ;
+                
+                if (checkAICollisions(aiPlayer)) {
+                    // Z movement caused collision, revert Z and try just X
+                    aiPlayer.position.z = oldPosition.z;
+                    aiPlayer.position.x = oldPosition.x + moveX;
+                    
+                    // If still colliding, revert to old position completely
+                    if (checkAICollisions(aiPlayer)) {
+                        aiPlayer.position.copy(oldPosition);
+                        
+                        // Always try a different direction when fully stuck
+                        setRandomPatrolTarget(aiPlayer);
+                    }
+                }
+            }
+            
             // Rotate AI to face movement direction
             const targetRotation = Math.atan2(direction.x, direction.z);
             
@@ -2581,17 +2627,6 @@
             // Apply smooth rotation
             aiPlayer.rotation.y += normalizedDiff * 0.1;
             
-            // Check for collisions
-            if (checkAICollisions(aiPlayer)) {
-                // Collision detected, revert position
-                aiPlayer.position.copy(oldPosition);
-                
-                // Try a different direction
-                if (Math.random() < 0.3) {
-                    setRandomPatrolTarget(aiPlayer);
-                }
-            }
-            
             // Simple boundary checks
             if (aiPlayer.position.x < -48) aiPlayer.position.x = -48;
             if (aiPlayer.position.x > 48) aiPlayer.position.x = 48;
@@ -2601,8 +2636,8 @@
         
         // Helper function to check AI collisions with obstacles
         function checkAICollisions(aiPlayer) {
-            // AI collision radius
-            const aiRadius = 0.5;
+            // AI collision radius - make it smaller to match player's radius
+            const aiRadius = 0.3; // Reduced from 0.5 to be closer to player's 0.2
             const aiPos = aiPlayer.position;
             
             // Check each obstacle
@@ -2629,6 +2664,40 @@
             }
             
             return false; // No collision
+        }
+        
+        // Helper function to find a safe spawn position for AI players
+        function findSafeSpawnPosition() {
+            // Maximum attempts to find a safe position
+            const maxAttempts = 20;
+            
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                // Generate a random position within the arena
+                // Stay away from the edges a bit
+                const x = (Math.random() - 0.5) * 80;
+                const z = (Math.random() - 0.5) * 80;
+                
+                // Create a temporary AI player at this position to check for collisions
+                const tempAI = new THREE.Group();
+                tempAI.position.set(x, 1.6, z);
+                
+                // Check if this position collides with any obstacles
+                if (!checkAICollisions(tempAI)) {
+                    // No collision, this is a safe position
+                    return { x, z };
+                }
+            }
+            
+            // If we couldn't find a safe position after max attempts,
+            // return a position in one of the corners which should be safe
+            const corners = [
+                { x: -40, z: -40 },
+                { x: 40, z: -40 },
+                { x: -40, z: 40 },
+                { x: 40, z: 40 }
+            ];
+            
+            return corners[Math.floor(Math.random() * corners.length)];
         }
         
         // Helper function to check if AI can pick up items
@@ -2913,23 +2982,15 @@
             const aiCount = parseInt(document.getElementById('ai-count').value) || 0;
             const aiDifficulty = document.getElementById('ai-difficulty').value || 'MEDIUM';
             
-            // Create AI players at different positions
-            const aiPositions = [
-                [30, -30],
-                [-30, 30],
-                [30, 30],
-                [-30, -30]
-            ];
-            
+            // Create AI players at safe positions
             for (let i = 0; i < aiCount; i++) {
-                if (i < aiPositions.length) {
-                    createAIPlayer(
-                        aiPositions[i][0], 
-                        aiPositions[i][1], 
-                        aiDifficulty, 
-                        `Bot-${i+1}`
-                    );
-                }
+                const safePosition = findSafeSpawnPosition();
+                createAIPlayer(
+                    safePosition.x,
+                    safePosition.z,
+                    aiDifficulty,
+                    `Bot-${i+1}`
+                );
             }
             
             // Update HUD
